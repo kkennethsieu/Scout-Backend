@@ -1,0 +1,78 @@
+"""Domain error hierarchy — consistent {detail, code} JSON responses."""
+
+
+class DomainError(Exception):
+    """Base class for all domain errors. Caught by the global handler in main.py."""
+
+    def __init__(self, status: int, code: str, detail: str):
+        self.status = status
+        self.code = code
+        self.detail = detail
+
+
+class SpotNotFound(DomainError):
+    def __init__(self):
+        super().__init__(404, "SPOT_NOT_FOUND", "Spot not found")
+
+
+class ReviewNotFound(DomainError):
+    def __init__(self):
+        super().__init__(404, "REVIEW_NOT_FOUND", "Review not found")
+
+
+class UserNotFound(DomainError):
+    def __init__(self):
+        super().__init__(404, "USER_NOT_FOUND", "User not found")
+
+
+class PhotoInvalidFormat(DomainError):
+    def __init__(self):
+        super().__init__(400, "PHOTO_INVALID_FORMAT", "Photo must be a valid JPEG")
+
+
+class PhotoTooLarge(DomainError):
+    def __init__(self):
+        super().__init__(400, "PHOTO_TOO_LARGE", "Photo exceeds size limit")
+
+
+class PhotoCountInvalid(DomainError):
+    def __init__(self):
+        super().__init__(400, "PHOTO_COUNT_INVALID", "Must include 1–5 photos")
+
+
+class InvalidEnumValue(DomainError):
+    def __init__(self, field: str, value: str):
+        super().__init__(400, "INVALID_ENUM_VALUE", f"Invalid value '{value}' for {field}")
+
+
+class InvalidCursor(DomainError):
+    def __init__(self):
+        super().__init__(400, "INVALID_CURSOR", "Pagination cursor is invalid")
+
+
+class GeocodingFailed(DomainError):
+    def __init__(self, reason: str = ""):
+        detail = f"Geocoding failed: {reason}".strip(": ").strip()
+        if detail == "Geocoding failed":
+            detail = "Geocoding failed"
+        super().__init__(503, "GEOCODING_FAILED", detail)
+
+
+class MissingToken(DomainError):
+    def __init__(self):
+        super().__init__(401, "MISSING_TOKEN", "Authorization header missing or malformed")
+
+
+class InvalidToken(DomainError):
+    def __init__(self):
+        super().__init__(401, "INVALID_TOKEN", "Token is invalid or expired")
+
+
+class UpstreamUnavailable(DomainError):
+    def __init__(self):
+        super().__init__(503, "UPSTREAM_UNAVAILABLE", "Upstream service unavailable")
+
+
+class InternalError(DomainError):
+    def __init__(self):
+        super().__init__(500, "INTERNAL_ERROR", "Internal server error")

@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Client SDK has zero access. Backend uses Admin SDK to write.
+    // Read access is granted via bucket-level IAM (allUsers:objectViewer).
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

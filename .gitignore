@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+pip-wheel-metadata/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+
+# Coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.json.bak
+*.pem
+*.key
+service-account.json
+serviceAccountKey*.json
+firebase-adminsdk*.json
+
+# Firebase
+.firebase/
+emulator-data/
+*-debug.log
+*.log
+
+# Tooling / version managers
+.python-version
+
+# Node (only if firebase-tools is ever installed locally)
+node_modules/
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
