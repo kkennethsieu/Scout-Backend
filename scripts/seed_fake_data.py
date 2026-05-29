@@ -1,12 +1,8 @@
-"""Seed the Firebase Emulator Suite with fake users, spots, and reviews.
+"""Seed the Firebase Emulator Suite with high-fidelity, beautiful mockup-backing spots, reviews, and users.
 
 Run AFTER `make emulators` is up in another terminal:
 
     python -m scripts.seed_fake_data
-
-Or with flags:
-
-    python -m scripts.seed_fake_data --users 3 --spots 10 --no-clear
 
 The script targets ONLY the local emulators — it refuses to run against real
 Firestore by hard-coding the emulator env vars before importing anything that
@@ -15,10 +11,8 @@ touches Firebase.
 
 import argparse
 import os
-import random
 import sys
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
 
 import requests
 
@@ -35,45 +29,208 @@ PROJECT_ID = "scout-test"
 FIRESTORE_HOST = "127.0.0.1:8080"
 AUTH_HOST = "http://127.0.0.1:9099"
 
-# LA city hall — same coord the test fixtures use for the geocoding mock.
-DEFAULT_CENTER_LAT = 34.0522
-DEFAULT_CENTER_LNG = -118.2437
-
-SPOT_NAMES = [
-    "Griffith Observatory Overlook",
-    "Echo Park Lake Bridge",
-    "Vista Hermosa Sunset",
-    "Sixth Street Viaduct",
-    "Hollywood Sign Trail",
-    "Venice Canals South",
-    "Baldwin Hills Scenic",
-    "Angels Flight Steps",
-    "Mulholland Pull-Off",
-    "Kenneth Hahn Ridge",
-    "El Matador Cove",
-    "Point Dume Bluff",
-    "Runyon Canyon Peak",
-    "Downtown Rooftop North",
-    "Silver Lake Reservoir",
+# 4 High-fidelity Scenic California Spots with curated, beautiful real Unsplash landscape image pools
+HIGH_FIDELITY_SPOTS = [
+    {
+        "id": "spot-griffith-observatory",
+        "name": "Griffith Observatory Overlook",
+        "lat": 34.1184,
+        "lng": -118.3004,
+        "city": "Los Angeles",
+        "admin_area": "California",
+        "country": "United States",
+        "reviews": [
+            {
+                "rating": 5,
+                "notes": "Stunning golden hour light hitting the front facade. Extremely busy but totally worth the trip.",
+                "best_time_of_day": ["GoldenHour", "BlueHour"],
+                "access_level": "Easy",
+                "entrance_fee": "Free",
+                "crowd_level": "Crowded",
+                "environment": "Urban",
+                "permit_required": False,
+                "drone_allowed": False,
+                "tripod_allowed": False,
+                "gear_recommendations": "Wide-angle lens (14-24mm) to capture the entire facade. Sturdy tripod is banned inside but tolerated outside in some parking boundaries.",
+                "composition_hints": "Shoot from the front lawn path leading up to the main dome to get symmetrical leading lines. Catch the Hollywood sign from the western terrace.",
+                "photo_urls": [
+                    "https://images.unsplash.com/photo-1518391846015-55a9cc003b25?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=800&q=80",
+                ],
+            },
+            {
+                "rating": 4,
+                "notes": "Beautiful views of the city basin! Parking is expensive ($10/hr) on the hill, but walking up from the Greek Theatre is free and beautiful.",
+                "best_time_of_day": ["Night"],
+                "access_level": "Easy",
+                "entrance_fee": "Free",
+                "crowd_level": "Moderate",
+                "environment": "Urban",
+                "permit_required": False,
+                "drone_allowed": False,
+                "tripod_allowed": False,
+                "gear_recommendations": "A fast prime lens like a 35mm or 50mm f/1.8 is perfect for night portraits with the city lights bokeh behind.",
+                "composition_hints": "Position your subject on the western balcony to catch the sunset gradient and the lights of Hollywood starting to twinkle.",
+                "photo_urls": [
+                    "https://images.unsplash.com/photo-1542224566-6e85f2e6772f?auto=format&fit=crop&w=800&q=80"
+                ],
+            },
+            {
+                "rating": 5,
+                "notes": "Caught a magical sunrise here! Barely anyone around compared to the chaotic evening crowd. The morning fog rolling over the valley is sublime.",
+                "best_time_of_day": ["Sunrise"],
+                "access_level": "Easy",
+                "entrance_fee": "Free",
+                "crowd_level": "Light",
+                "environment": "Urban",
+                "permit_required": False,
+                "drone_allowed": False,
+                "tripod_allowed": True,
+                "gear_recommendations": "A telephoto lens (70-200mm) is excellent to isolate downtown LA skyscrapers cutting through the low morning fog.",
+                "composition_hints": "Shoot from the south-east corner trail. Use the framing of the hillside pine branches to balance the LA skyline.",
+                "photo_urls": [
+                    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=800&q=80"
+                ],
+            },
+        ],
+    },
+    {
+        "id": "spot-santa-monica-pier",
+        "name": "Santa Monica Pier Ferris Wheel",
+        "lat": 34.0100,
+        "lng": -118.4962,
+        "city": "Santa Monica",
+        "admin_area": "California",
+        "country": "United States",
+        "reviews": [
+            {
+                "rating": 5,
+                "notes": "Outstanding ocean breeze and wonderful lighting at night. The neon lights of the ferris wheel reflecting on the wet sand is a photographer's dream.",
+                "best_time_of_day": ["Night", "BlueHour"],
+                "access_level": "Easy",
+                "entrance_fee": "Free",
+                "crowd_level": "Crowded",
+                "environment": "Coastal",
+                "permit_required": False,
+                "drone_allowed": False,
+                "tripod_allowed": True,
+                "gear_recommendations": "10-stop ND filter for long-exposure water smoothing during sunset. Bring a lens cloth to clean salt spray off your optics.",
+                "composition_hints": "Walk down to the sand underneath the pier structure to frame the glowing ferris wheel through the giant wooden pilings.",
+                "photo_urls": [
+                    "https://images.unsplash.com/photo-1498654896293-37aacf113fd9?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80",
+                ],
+            },
+            {
+                "rating": 4,
+                "notes": "Classic beach spot! Very crowded during midday, but walking along the boardwalk around golden hour is incredible. Great street photography spot.",
+                "best_time_of_day": ["GoldenHour"],
+                "access_level": "Easy",
+                "entrance_fee": "Free",
+                "crowd_level": "Crowded",
+                "environment": "Coastal",
+                "permit_required": False,
+                "drone_allowed": False,
+                "tripod_allowed": True,
+                "gear_recommendations": "A high-quality circular polarizer to cut glare off the ocean waves and saturate the deep sky blue.",
+                "composition_hints": "Get a high-angle shot from the Palisade Bluffs overlooking the pier entrance and the coastal highway below.",
+                "photo_urls": [
+                    "https://images.unsplash.com/photo-1505118380757-91f5f5632de0?auto=format&fit=crop&w=800&q=80"
+                ],
+            },
+        ],
+    },
+    {
+        "id": "spot-yosemite-valley",
+        "name": "Yosemite Valley Tunnel View",
+        "lat": 37.7456,
+        "lng": -119.5332,
+        "city": "Yosemite Valley",
+        "admin_area": "California",
+        "country": "United States",
+        "reviews": [
+            {
+                "rating": 5,
+                "notes": "Breathtaking grandeur. Standing at the overlook and seeing El Capitan and Half Dome rise up is an unforgettable experience.",
+                "best_time_of_day": ["Sunrise", "GoldenHour"],
+                "access_level": "Moderate",
+                "entrance_fee": "Paid",
+                "crowd_level": "Moderate",
+                "environment": "Nature",
+                "permit_required": True,
+                "drone_allowed": False,
+                "tripod_allowed": True,
+                "gear_recommendations": "Wide-angle zoom (16-35mm) to capture both granite faces. A sturdy carbon tripod is necessary to withstand valley winds.",
+                "composition_hints": "The classic composition puts El Capitan on the left, Bridalveil Fall on the right, and Half Dome sitting majestically in the center.",
+                "photo_urls": [
+                    "https://images.unsplash.com/photo-1426604966848-d7adac402bff?auto=format&fit=crop&w=800&q=80"
+                ],
+            },
+            {
+                "rating": 5,
+                "notes": "Did some afternoon hiking down in the valley meadows. The reflection of El Capitan in the Merced River is absolutely gorgeous.",
+                "best_time_of_day": ["Midday"],
+                "access_level": "Moderate",
+                "entrance_fee": "Paid",
+                "crowd_level": "Light",
+                "environment": "Nature",
+                "permit_required": True,
+                "drone_allowed": False,
+                "tripod_allowed": True,
+                "gear_recommendations": "Telephoto zoom (70-200mm) is excellent to isolate climbing teams on El Cap or detail the raging waterfalls.",
+                "composition_hints": "Valley View parking pull-out captures the river in the foreground, acting as a perfect leading line towards the mountains.",
+                "photo_urls": [
+                    "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80"
+                ],
+            },
+        ],
+    },
+    {
+        "id": "spot-joshua-tree",
+        "name": "Joshua Tree Arch Rock",
+        "lat": 34.0128,
+        "lng": -116.1681,
+        "city": "Joshua Tree",
+        "admin_area": "California",
+        "country": "United States",
+        "reviews": [
+            {
+                "rating": 5,
+                "notes": "One of the best dark sky areas in California! The Milky Way is clearly visible to the naked eye. Unreal desert landscape.",
+                "best_time_of_day": ["Night"],
+                "access_level": "Difficult",
+                "entrance_fee": "Paid",
+                "crowd_level": "Light",
+                "environment": "Desert",
+                "permit_required": True,
+                "drone_allowed": False,
+                "tripod_allowed": True,
+                "gear_recommendations": "A fast wide prime lens (20mm f/1.8 or 24mm f/1.4). Red headlamp to protect your night-vision adaptation.",
+                "composition_hints": "Position your tripod low inside the rocky wash to frame the core of the Milky Way arching directly over the natural stone arch.",
+                "photo_urls": [
+                    "https://images.unsplash.com/photo-1532960401447-7dd05bef20b0?auto=format&fit=crop&w=800&q=80"
+                ],
+            },
+            {
+                "rating": 5,
+                "notes": "Beautiful sunset over the desert rocks! The Joshua Trees form incredible silhouettes against the deep orange sky.",
+                "best_time_of_day": ["Sunset"],
+                "access_level": "Difficult",
+                "entrance_fee": "Paid",
+                "crowd_level": "Light",
+                "environment": "Desert",
+                "permit_required": True,
+                "drone_allowed": False,
+                "tripod_allowed": True,
+                "gear_recommendations": "A graduated ND filter to handle the extreme dynamic range between the bright sky and dark desert foreground.",
+                "composition_hints": "Isolate a single, particularly gnarly Joshua Tree as your primary foreground anchor, offset to the right third of the frame.",
+                "photo_urls": [
+                    "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80"
+                ],
+            },
+        ],
+    },
 ]
-
-NOTES_POOL = [
-    "Soft light right before sunset, sparse foot traffic on weekdays.",
-    "Bring a wide lens — the skyline barely fits at 24mm full frame.",
-    "Lot fills up fast on weekends; arrive at least an hour before golden hour.",
-    "Marine layer can roll in unexpectedly even in summer. Check the webcam first.",
-    "Gate locks at 10pm sharp. Rangers do enforce it.",
-    "The hike is steeper than it looks on the map. Wear real shoes.",
-    "Shoulder of the road is narrow — park on the south side only.",
-    "Tripods are tolerated but security will ask you to leave if you block the path.",
-]
-
-BEST_TIMES = ["Sunrise", "GoldenHour", "BlueHour", "Midday", "Night"]
-ACCESS_LEVELS = ["Easy", "Moderate", "Difficult"]
-ENTRANCE_FEES = ["Free", "Paid", "Permit"]
-CROWD_LEVELS = ["Empty", "Light", "Moderate", "Crowded"]
-ENVIRONMENTS = ["Urban", "Nature", "Coastal", "Mountain", "Desert", "Indoor"]
-
 
 # --- Emulator preflight ----------------------------------------------------
 
@@ -95,11 +252,8 @@ def check_emulators() -> None:
 
 
 def clear_firestore() -> None:
-    """Wipe the emulator's Firestore via its REST endpoint (same trick conftest uses)."""
-    url = (
-        f"http://{FIRESTORE_HOST}/emulator/v1/projects/{PROJECT_ID}"
-        "/databases/(default)/documents"
-    )
+    """Wipe the emulator's Firestore via its REST endpoint."""
+    url = f"http://{FIRESTORE_HOST}/emulator/v1/projects/{PROJECT_ID}/databases/(default)/documents"
     requests.delete(url, timeout=5).raise_for_status()
     print("[seed] Cleared Firestore emulator.")
 
@@ -137,56 +291,13 @@ def mint_user(email: str, display_name: str) -> dict:
     }
 
 
-# --- Fake data generators --------------------------------------------------
-
-
-def jittered_coord(center_lat: float, center_lng: float, max_km: float) -> tuple[float, float]:
-    """Random point within roughly max_km of the center. Good enough for seeding."""
-    # 1 degree latitude ≈ 111 km; longitude scales by cos(lat).
-    import math
-
-    dlat_km = random.uniform(-max_km, max_km)
-    dlng_km = random.uniform(-max_km, max_km)
-    dlat = dlat_km / 111.0
-    dlng = dlng_km / (111.0 * math.cos(math.radians(center_lat)))
-    return center_lat + dlat, center_lng + dlng
-
-
-def make_review(spot_id: str, user_uid: str, created_at: datetime) -> tuple[str, dict]:
-    review_id = str(uuid4())
-    photo_count = random.randint(1, 3)
-    photo_urls = [
-        f"https://picsum.photos/seed/{review_id}-{i}/800/600" for i in range(photo_count)
-    ]
-    times = random.sample(BEST_TIMES, k=random.randint(1, 2))
-    return review_id, {
-        "spot_id": spot_id,
-        "user_id": user_uid,
-        "photo_urls": photo_urls,
-        "overall_rating": random.choices([3, 4, 5], weights=[1, 3, 2])[0],
-        "notes": random.choice(NOTES_POOL),
-        "best_time_of_day": times,
-        "access_level": random.choices(ACCESS_LEVELS, weights=[3, 2, 1])[0],
-        "entrance_fee": random.choices(ENTRANCE_FEES, weights=[4, 1, 1])[0],
-        "crowd_level": random.choices(CROWD_LEVELS, weights=[1, 3, 3, 1])[0],
-        "environment": random.choice(ENVIRONMENTS),
-        "created_at": created_at,
-    }
-
-
 # --- Main ------------------------------------------------------------------
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed fake data into the Firestore emulator.")
-    parser.add_argument("--users", type=int, default=3)
-    parser.add_argument("--spots", type=int, default=10)
-    parser.add_argument("--min-reviews", type=int, default=2)
-    parser.add_argument("--max-reviews", type=int, default=4)
-    parser.add_argument("--center-lat", type=float, default=DEFAULT_CENTER_LAT)
-    parser.add_argument("--center-lng", type=float, default=DEFAULT_CENTER_LNG)
-    parser.add_argument("--radius-km", type=float, default=10.0)
-    parser.add_argument("--seed", type=int, default=42, help="RNG seed for reproducibility.")
+    parser = argparse.ArgumentParser(
+        description="Seed high-fidelity fake data into the Firestore emulator."
+    )
     parser.add_argument(
         "--no-clear",
         dest="clear",
@@ -195,8 +306,6 @@ def main() -> None:
     )
     parser.set_defaults(clear=True)
     args = parser.parse_args()
-
-    random.seed(args.seed)
 
     check_emulators()
 
@@ -209,18 +318,21 @@ def main() -> None:
     if args.clear:
         clear_firestore()
 
-    # 1. Mint users.
+    # 1. Mint users
     users: list[dict] = []
-    user_names = ["Alice Chen", "Bob Rivera", "Carol Kim", "Dana Patel", "Evan Wu"]
-    for i in range(args.users):
-        display = user_names[i] if i < len(user_names) else f"Test User {i + 1}"
-        email = f"seed-{display.split()[0].lower()}@example.com"
+    user_configs = [
+        ("seed-alice@example.com", "Alice Chen"),
+        ("seed-bob@example.com", "Bob Rivera"),
+        ("seed-carol@example.com", "Carol Kim"),
+        ("seed-dana@example.com", "Dana Patel"),
+    ]
+    for email, display in user_configs:
         users.append(mint_user(email=email, display_name=display))
     print(f"[seed] Minted {len(users)} users via Auth Emulator.")
 
     now = datetime.now(timezone.utc)
 
-    # 2. Write user docs (matches the shape user_service.get_or_create_user produces).
+    # 2. Write user docs in Firestore
     user_batch = db.batch()
     for u in users:
         user_batch.set(
@@ -235,67 +347,76 @@ def main() -> None:
         )
     user_batch.commit()
 
-    # 3. For each spot: generate reviews, replay aggregates, batch write.
-    spot_ids: list[str] = []
+    # 3. For each high-fidelity spot: seed reviews, replay aggregates, batch write
     total_reviews = 0
-    for i in range(args.spots):
-        spot_id = str(uuid4())
-        spot_ids.append(spot_id)
-        lat, lng = jittered_coord(args.center_lat, args.center_lng, args.radius_km)
-        name = (
-            SPOT_NAMES[i] if i < len(SPOT_NAMES) else f"Test Spot {i + 1}"
-        )
-
-        spot_created = now - timedelta(days=random.randint(7, 90))
+    for spot_cfg in HIGH_FIDELITY_SPOTS:
+        spot_id = spot_cfg["id"]
+        spot_created = now - timedelta(days=60)
         spot_doc = {
-            "name": name,
-            "public_lat": lat,
-            "public_lng": lng,
-            "city": "Los Angeles",
-            "admin_area": "California",
-            "country": "United States",
+            "name": spot_cfg["name"],
+            "public_lat": spot_cfg["lat"],
+            "public_lng": spot_cfg["lng"],
+            "city": spot_cfg["city"],
+            "admin_area": spot_cfg["admin_area"],
+            "country": spot_cfg["country"],
             "created_at": spot_created,
             **empty_aggregates(),
         }
 
-        num_reviews = random.randint(args.min_reviews, args.max_reviews)
-        # Reviews dated AFTER the spot, oldest first — replay order matters
-        # so recent_review_photos ends up with newest at index 0.
-        review_offsets = sorted(
-            random.uniform(0.5, (now - spot_created).total_seconds() / 86400.0)
-            for _ in range(num_reviews)
-        )
-        reviews: list[tuple[str, dict]] = []
-        for offset_days in review_offsets:
-            created_at = spot_created + timedelta(days=offset_days)
-            author = random.choice(users)
-            review_id, review = make_review(spot_id, author["uid"], created_at)
-            reviews.append((review_id, review))
-            spot_doc = update_or_init_aggregates(spot_doc, review, review_id)
+        reviews_to_write = []
+        review_configs = spot_cfg["reviews"]
 
+        # Date reviews sequentially to preserve clean chronological aggregations
+        for index, r_cfg in enumerate(review_configs):
+            review_id = f"rev-{spot_id}-{index}"
+            author = users[index % len(users)]
+            created_at = spot_created + timedelta(days=10 * (index + 1))
+
+            review_doc = {
+                "spot_id": spot_id,
+                "user_id": author["uid"],
+                "photo_urls": r_cfg["photo_urls"],
+                "overall_rating": r_cfg["rating"],
+                "notes": r_cfg["notes"],
+                "best_time_of_day": r_cfg["best_time_of_day"],
+                "access_level": r_cfg["access_level"],
+                "entrance_fee": r_cfg["entrance_fee"],
+                "crowd_level": r_cfg["crowd_level"],
+                "environment": r_cfg["environment"],
+                "permit_required": r_cfg["permit_required"],
+                "drone_allowed": r_cfg["drone_allowed"],
+                "tripod_allowed": r_cfg["tripod_allowed"],
+                "gear_recommendations": r_cfg["gear_recommendations"],
+                "composition_hints": r_cfg["composition_hints"],
+                "created_at": created_at,
+            }
+            reviews_to_write.append((review_id, review_doc))
+            spot_doc = update_or_init_aggregates(spot_doc, review_doc, review_id)
+
+        # Batch write spot and reviews
         batch = db.batch()
         batch.set(db.collection("spots").document(spot_id), spot_doc)
-        for rid, review in reviews:
-            batch.set(db.collection("reviews").document(rid), review)
+        for rid, r_doc in reviews_to_write:
+            batch.set(db.collection("reviews").document(rid), r_doc)
         batch.commit()
-        total_reviews += len(reviews)
+        total_reviews += len(reviews_to_write)
 
-    print(f"[seed] Wrote {args.spots} spots, {total_reviews} reviews.")
+    print(f"[seed] Wrote {len(HIGH_FIDELITY_SPOTS)} high-fidelity spots, {total_reviews} reviews.")
 
-    # 4. Summary.
+    # 4. Summary output
     print("\n=== Seed summary ===")
-    print(f"Center: lat={args.center_lat} lng={args.center_lng} radius_km={args.radius_km}")
-    print("\nUsers (use one of these tokens as `Authorization: Bearer <idToken>`):")
+    print("Users (use one of these tokens as `Authorization: Bearer <idToken>`):")
     for u in users:
         print(f"  - {u['email']}  uid={u['uid']}")
         print(f"      idToken={u['id_token']}")
-    print("\nSample spot IDs:")
-    for sid in spot_ids[:3]:
-        print(f"  - {sid}")
+    print("\nHigh-Fidelity Spots Seeded:")
+    for spot_cfg in HIGH_FIDELITY_SPOTS:
+        print(f"  - {spot_cfg['name']} (ID: {spot_cfg['id']})")
+        print(f"      Coords: ({spot_cfg['lat']}, {spot_cfg['lng']}) in {spot_cfg['city']}")
     print(
-        f"\nTry:\n"
-        f"  curl -H 'Authorization: Bearer <idToken>' "
-        f"'http://localhost:8000/spots?lat={args.center_lat}&lng={args.center_lng}&radius_km={args.radius_km}'"
+        "\nTry querying nearby Griffith Observatory:\n"
+        "  curl -H 'Authorization: Bearer <idToken>' "
+        "'http://localhost:8000/spots?lat=34.1184&lng=-118.3004&radius_km=10'"
     )
 
 

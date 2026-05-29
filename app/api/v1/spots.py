@@ -48,6 +48,9 @@ async def get_spot_reviews(
 @router.post("/spots/{spot_id}/reviews", response_model=ReviewResponse, status_code=201)
 async def submit_review(
     spot_id: str,
+    permit_required: bool = Form(...),
+    drone_allowed: bool = Form(...),
+    tripod_allowed: bool = Form(...),
     photos: list[UploadFile] = File(...),
     overall_rating: int = Form(..., ge=1, le=5),
     notes: str = Form(..., min_length=1, max_length=1000),
@@ -56,6 +59,8 @@ async def submit_review(
     entrance_fee: str = Form(...),
     crowd_level: str = Form(...),
     environment: str = Form(...),
+    gear_recommendations: str = Form(""),
+    composition_hints: str = Form(""),
     uid: str = Depends(current_uid),
 ):
     """
@@ -82,6 +87,11 @@ async def submit_review(
         entrance_fee=entrance_fee,
         crowd_level=crowd_level,
         environment=environment,
+        permit_required=permit_required,
+        drone_allowed=drone_allowed,
+        tripod_allowed=tripod_allowed,
+        gear_recommendations=gear_recommendations,
+        composition_hints=composition_hints,
         uid=uid,
     )
 
@@ -92,6 +102,9 @@ async def submit_review(
     status_code=201,
 )
 async def submit_with_new_spot(
+    permit_required: bool = Form(...),
+    drone_allowed: bool = Form(...),
+    tripod_allowed: bool = Form(...),
     photos: list[UploadFile] = File(...),
     name: str = Form(..., min_length=1, max_length=200),
     lat: float = Form(..., ge=-90, le=90),
@@ -103,6 +116,8 @@ async def submit_with_new_spot(
     entrance_fee: str = Form(...),
     crowd_level: str = Form(...),
     environment: str = Form(...),
+    gear_recommendations: str = Form(""),
+    composition_hints: str = Form(""),
     uid: str = Depends(current_uid),
 ):
     """
@@ -133,6 +148,11 @@ async def submit_with_new_spot(
         entrance_fee=entrance_fee,
         crowd_level=crowd_level,
         environment=environment,
+        permit_required=permit_required,
+        drone_allowed=drone_allowed,
+        tripod_allowed=tripod_allowed,
+        gear_recommendations=gear_recommendations,
+        composition_hints=composition_hints,
         uid=uid,
         geo_data=geo_data,
     )

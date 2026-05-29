@@ -93,6 +93,12 @@ class TestSpotResponseSchema:
             mode_entrance_fee="Free",
             mode_crowd_level="Light",
             mode_environment="Urban",
+            best_times=["GoldenHour", "Sunrise"],
+            mode_permit_required=False,
+            mode_drone_allowed=False,
+            mode_tripod_allowed=True,
+            recent_gear_recommendations=["Tripod is crucial"],
+            recent_composition_hints=["Frame with arch"],
             recent_review_photos=[],
         )
         assert spot.id == "spot-1"
@@ -115,6 +121,11 @@ class TestReviewResponseSchema:
             entrance_fee="Free",
             crowd_level="Light",
             environment="Urban",
+            permit_required=False,
+            drone_allowed=False,
+            tripod_allowed=True,
+            gear_recommendations="Wide angle lens",
+            composition_hints="Get low for foreground",
             created_at=datetime.now(timezone.utc),
         )
         assert review.overall_rating == 4

@@ -27,6 +27,11 @@ def _spot_review_form_data(**overrides):
         "entrance_fee": "Free",
         "crowd_level": "Empty",
         "environment": "Urban",
+        "permit_required": False,
+        "drone_allowed": False,
+        "tripod_allowed": True,
+        "gear_recommendations": "Wide lens",
+        "composition_hints": "Low angle",
     }
     data.update(overrides)
     return data

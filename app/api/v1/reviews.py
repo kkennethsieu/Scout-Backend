@@ -16,4 +16,3 @@ async def get_review(
 ):
     """Get a single review by ID."""
     return await review_service.get_review(review_id)
-

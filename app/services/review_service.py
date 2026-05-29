@@ -118,6 +118,11 @@ async def submit_review(
     entrance_fee: str,
     crowd_level: str,
     environment: str,
+    permit_required: bool,
+    drone_allowed: bool,
+    tripod_allowed: bool,
+    gear_recommendations: str,
+    composition_hints: str,
     uid: str,
 ) -> dict:
     """
@@ -158,6 +163,11 @@ async def submit_review(
         "entrance_fee": entrance_fee,
         "crowd_level": crowd_level,
         "environment": environment,
+        "permit_required": permit_required,
+        "drone_allowed": drone_allowed,
+        "tripod_allowed": tripod_allowed,
+        "gear_recommendations": gear_recommendations,
+        "composition_hints": composition_hints,
         "created_at": now,
     }
 
@@ -207,6 +217,11 @@ async def submit_with_new_spot(
     entrance_fee: str,
     crowd_level: str,
     environment: str,
+    permit_required: bool,
+    drone_allowed: bool,
+    tripod_allowed: bool,
+    gear_recommendations: str,
+    composition_hints: str,
     uid: str,
     geo_data: dict,
 ) -> dict:
@@ -246,6 +261,11 @@ async def submit_with_new_spot(
         "entrance_fee": entrance_fee,
         "crowd_level": crowd_level,
         "environment": environment,
+        "permit_required": permit_required,
+        "drone_allowed": drone_allowed,
+        "tripod_allowed": tripod_allowed,
+        "gear_recommendations": gear_recommendations,
+        "composition_hints": composition_hints,
         "created_at": now,
     }
 

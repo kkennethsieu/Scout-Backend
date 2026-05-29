@@ -1,6 +1,7 @@
 """Review response schemas."""
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -19,6 +20,11 @@ class ReviewResponse(BaseModel):
     entrance_fee: str
     crowd_level: str
     environment: str
+    gear_recommendations: Optional[str] = ""
+    composition_hints: Optional[str] = ""
+    permit_required: bool
+    drone_allowed: bool
+    tripod_allowed: bool
     created_at: datetime
 
 

@@ -45,6 +45,11 @@ def _seed_review_direct(spot_id, review_id, user_id, rating=4, created_at=None):
         "entrance_fee": "Free",
         "crowd_level": "Light",
         "environment": "Urban",
+        "permit_required": False,
+        "drone_allowed": False,
+        "tripod_allowed": True,
+        "gear_recommendations": "Some gear",
+        "composition_hints": "Some comp",
         "created_at": now,
     }
     db.collection("reviews").document(review_id).set(review_data)
@@ -70,6 +75,11 @@ def _review_form_data(**overrides):
         "entrance_fee": "Free",
         "crowd_level": "Light",
         "environment": "Urban",
+        "permit_required": False,
+        "drone_allowed": False,
+        "tripod_allowed": True,
+        "gear_recommendations": "Some gear",
+        "composition_hints": "Some comp",
     }
     data.update(overrides)
     return data

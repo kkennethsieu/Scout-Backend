@@ -7,12 +7,12 @@ dev:
 	uvicorn app.main:app --reload --port 8000 --env-file .env
 
 seed:
-	python -m scripts.seed_fake_data
+	.venv/bin/python -m scripts.seed_fake_data
 
 test:
 	firebase emulators:exec --project=scout-test \
 	  --only=firestore,auth,storage \
-	  "pytest --cov=app --cov-report=term-missing"
+	  ".venv/bin/pytest --cov=app --cov-report=term-missing"
 
 lint:
 	ruff check app tests

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class RecentReviewPhoto(BaseModel):
@@ -28,6 +28,12 @@ class SpotResponse(BaseModel):
     mode_entrance_fee: str
     mode_crowd_level: str
     mode_environment: str
+    best_times: list[str] = []
+    mode_permit_required: Optional[bool] = None
+    mode_drone_allowed: Optional[bool] = None
+    mode_tripod_allowed: Optional[bool] = None
+    recent_gear_recommendations: list[str] = []
+    recent_composition_hints: list[str] = []
 
 
 class SpotSummaryResponse(BaseModel):
@@ -42,7 +48,11 @@ class SpotSummaryResponse(BaseModel):
     review_count: int
     avg_rating: float
     cover_photo_url: Optional[str] = None
-    recent_review_photos: list[RecentReviewPhoto] = []
+    recent_review_photos: list[RecentReviewPhoto] = Field(default=[])
+    best_times: list[str] = []
+    mode_permit_required: Optional[bool] = None
+    mode_drone_allowed: Optional[bool] = None
+    mode_tripod_allowed: Optional[bool] = None
 
     @model_validator(mode="before")
     @classmethod

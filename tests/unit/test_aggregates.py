@@ -18,6 +18,12 @@ def _make_review(
     env="Urban",
     photo_url="https://example.com/photo.jpg",
     created_at=None,
+    permit_required=False,
+    drone_allowed=False,
+    tripod_allowed=False,
+    gear_recommendations="",
+    composition_hints="",
+    best_time_of_day=None,
 ):
     """Helper to build a review dict for testing."""
     return {
@@ -27,6 +33,12 @@ def _make_review(
         "crowd_level": crowd,
         "environment": env,
         "photo_urls": [photo_url],
+        "permit_required": permit_required,
+        "drone_allowed": drone_allowed,
+        "tripod_allowed": tripod_allowed,
+        "gear_recommendations": gear_recommendations,
+        "composition_hints": composition_hints,
+        "best_time_of_day": best_time_of_day if best_time_of_day is not None else ["Sunrise"],
         "created_at": created_at or datetime.now(timezone.utc),
     }
 
@@ -47,6 +59,16 @@ class TestEmptyAggregates:
         assert agg["mode_crowd_level"] == ""
         assert agg["mode_environment"] == ""
         assert agg["recent_review_photos"] == []
+        assert agg["best_time_of_day_counts"] == {}
+        assert agg["best_times"] == []
+        assert agg["permit_required_counts"] == {}
+        assert agg["drone_allowed_counts"] == {}
+        assert agg["tripod_allowed_counts"] == {}
+        assert agg["mode_permit_required"] is None
+        assert agg["mode_drone_allowed"] is None
+        assert agg["mode_tripod_allowed"] is None
+        assert agg["recent_gear_recommendations"] == []
+        assert agg["recent_composition_hints"] == []
 
     def test_returns_fresh_dicts(self):
         """Each call returns a new dict — mutating one doesn't affect the next."""
@@ -153,3 +175,104 @@ class TestUpdateOrInitAggregates:
         assert result["mode_entrance_fee"] == "Permit"
         assert result["mode_crowd_level"] == "Crowded"
         assert result["mode_environment"] == "Coastal"
+
+    def test_best_times_aggregation_and_sorting(self):
+        """best_times aggregates counts and sorts by count (descending) then alphabetically."""
+        spot = {"name": "Test", **empty_aggregates()}
+
+        # 3 votes for GoldenHour, 2 for Sunset, 2 for Sunrise, 1 for Night
+        spot = update_or_init_aggregates(
+            spot, _make_review(best_time_of_day=["GoldenHour", "Sunset"]), "rev-0"
+        )
+        spot = update_or_init_aggregates(
+            spot, _make_review(best_time_of_day=["GoldenHour", "Sunrise"]), "rev-1"
+        )
+        spot = update_or_init_aggregates(
+            spot,
+            _make_review(best_time_of_day=["GoldenHour", "Sunset", "Sunrise", "Night"]),
+            "rev-2",
+        )
+
+        counts = spot["best_time_of_day_counts"]
+        assert counts["GoldenHour"] == 3
+        assert counts["Sunset"] == 2
+        assert counts["Sunrise"] == 2
+        assert counts["Night"] == 1
+
+        # Sorted by count desc, then alphabetically: GoldenHour (3), Sunrise (2), Sunset (2), Night (1)
+        # Sunrise < Sunset alphabetically.
+        assert spot["best_times"] == ["GoldenHour", "Sunrise", "Sunset", "Night"]
+
+    def test_boolean_modes_majority_and_ties(self):
+        """Boolean aggregates select majority, tie-break legally (permit->True, drone->False, tripod->False)."""
+        spot = {"name": "Test", **empty_aggregates()}
+
+        # Vote 1: permit=True, drone=True, tripod=True
+        spot = update_or_init_aggregates(
+            spot,
+            _make_review(permit_required=True, drone_allowed=True, tripod_allowed=True),
+            "rev-1",
+        )
+        assert spot["mode_permit_required"] is True
+        assert spot["mode_drone_allowed"] is True
+        assert spot["mode_tripod_allowed"] is True
+
+        # Vote 2: permit=False, drone=False, tripod=False (TIE)
+        spot = update_or_init_aggregates(
+            spot,
+            _make_review(permit_required=False, drone_allowed=False, tripod_allowed=False),
+            "rev-2",
+        )
+        # Tie-breaks:
+        # permit_required -> True (fail-safe for legal reasons)
+        # drone_allowed -> False (fail-safe for legal reasons)
+        # tripod_allowed -> False (fail-safe)
+        assert spot["mode_permit_required"] is True
+        assert spot["mode_drone_allowed"] is False
+        assert spot["mode_tripod_allowed"] is False
+
+        # Vote 3: permit=False, drone=False, tripod=False (False majority)
+        spot = update_or_init_aggregates(
+            spot,
+            _make_review(permit_required=False, drone_allowed=False, tripod_allowed=False),
+            "rev-3",
+        )
+        assert spot["mode_permit_required"] is False
+        assert spot["mode_drone_allowed"] is False
+        assert spot["mode_tripod_allowed"] is False
+
+    def test_textual_aggregates_prepend_and_cap(self):
+        """Textual aggregates prepend new entries, cap at 5, ignore empty tips."""
+        spot = {"name": "Test", **empty_aggregates()}
+
+        # 1. First review with tips
+        spot = update_or_init_aggregates(
+            spot,
+            _make_review(
+                gear_recommendations="Tripod is key", composition_hints="Use leading lines"
+            ),
+            "rev-1",
+        )
+        assert spot["recent_gear_recommendations"] == ["Tripod is key"]
+        assert spot["recent_composition_hints"] == ["Use leading lines"]
+
+        # 2. Review without tips (should be ignored, keeping previous)
+        spot = update_or_init_aggregates(
+            spot, _make_review(gear_recommendations="", composition_hints=" "), "rev-2"
+        )
+        assert spot["recent_gear_recommendations"] == ["Tripod is key"]
+        assert spot["recent_composition_hints"] == ["Use leading lines"]
+
+        # 3. Add more tips to verify prepend order and capping
+        for i in range(5):
+            spot = update_or_init_aggregates(
+                spot,
+                _make_review(gear_recommendations=f"Gear {i}", composition_hints=f"Comp {i}"),
+                f"rev-tip-{i}",
+            )
+
+        # Prepend order: Gear 4 is newest, Gear 0 is oldest, "Tripod is key" is oldest and got capped (since limit is 5)
+        assert len(spot["recent_gear_recommendations"]) == 5
+        assert spot["recent_gear_recommendations"][0] == "Gear 4"
+        assert spot["recent_gear_recommendations"][4] == "Gear 0"
+        assert "Tripod is key" not in spot["recent_gear_recommendations"]

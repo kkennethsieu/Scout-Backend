@@ -56,6 +56,11 @@ class TestFullFlow:
             "entrance_fee": "Free",
             "crowd_level": "Crowded",
             "environment": "Urban",
+            "permit_required": False,
+            "drone_allowed": False,
+            "tripod_allowed": False,
+            "gear_recommendations": "Observatory wide lens",
+            "composition_hints": "Shoot from front path",
         }
         r2 = client.post(
             "/spots/with-review",
@@ -102,6 +107,11 @@ class TestFullFlow:
             "entrance_fee": "Free",
             "crowd_level": "Crowded",
             "environment": "Nature",  # Changed
+            "permit_required": False,
+            "drone_allowed": False,
+            "tripod_allowed": False,
+            "gear_recommendations": "Strong tripod needed",
+            "composition_hints": "Frame observatory under stars",
         }
         r4 = client.post(
             "/spots/{}/reviews".format(spot_id),
