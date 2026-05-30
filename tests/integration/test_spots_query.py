@@ -127,10 +127,10 @@ class TestSpotsQuery:
         assert "review_count" in spot
         assert "avg_rating" in spot
         assert "cover_photo_url" in spot
+        assert "recent_review_photos" in spot
 
         # Verify detailed fields are excluded
         assert "mode_access_level" not in spot
         assert "mode_entrance_fee" not in spot
         assert "mode_crowd_level" not in spot
         assert "mode_environment" not in spot
-        assert "recent_review_photos" not in spot

@@ -22,9 +22,9 @@ class ReviewResponse(BaseModel):
     environment: str
     gear_recommendations: Optional[str] = ""
     composition_hints: Optional[str] = ""
-    permit_required: bool
-    drone_allowed: bool
-    tripod_allowed: bool
+    permit_required: bool = False
+    drone_allowed: bool = False
+    tripod_allowed: bool = False
     created_at: datetime
 
 

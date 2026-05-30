@@ -88,7 +88,28 @@ def empty_aggregates() -> dict:
         "mode_crowd_level": "",
         "mode_environment": "",
         "recent_review_photos": [],
+        "best_time_of_day_counts": {},
+        "best_times": [],
+        "permit_required_counts": {},
+        "drone_allowed_counts": {},
+        "tripod_allowed_counts": {},
+        "mode_permit_required": None,
+        "mode_drone_allowed": None,
+        "mode_tripod_allowed": None,
+        "recent_gear_recommendations": [],
+        "recent_composition_hints": [],
     }
+
+
+def _get_boolean_mode(counts: dict, tie_breaker: bool) -> bool:
+    """Majority vote for booleans stored as 'true'/'false' keys. Deterministic tie-breaker."""
+    true_count = counts.get("true", 0)
+    false_count = counts.get("false", 0)
+    if true_count == 0 and false_count == 0:
+        return tie_breaker
+    if true_count == false_count:
+        return tie_breaker
+    return true_count > false_count
 
 
 def update_or_init_aggregates(spot: dict, review: dict, review_id: str) -> dict:
@@ -105,6 +126,45 @@ def update_or_init_aggregates(spot: dict, review: dict, review_id: str) -> dict:
         counts[v] = counts.get(v, 0) + 1
         s[ck] = counts
         s[f"mode_{field}"] = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+    # best_time_of_day aggregation
+    best_time_counts = dict(s.get("best_time_of_day_counts") or {})
+    for val in review.get("best_time_of_day") or []:
+        best_time_counts[val] = best_time_counts.get(val, 0) + 1
+    s["best_time_of_day_counts"] = best_time_counts
+    s["best_times"] = [
+        item[0]
+        for item in sorted(best_time_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        if item[1] > 0
+    ]
+
+    # access & logistics boolean aggregation
+    for field, tie_breaker in [
+        ("permit_required", True),
+        ("drone_allowed", False),
+        ("tripod_allowed", False),
+    ]:
+        counts_key = f"{field}_counts"
+        counts = dict(s.get(counts_key) or {})
+        val = review[field]
+        val_str = "true" if val else "false"
+        counts[val_str] = counts.get(val_str, 0) + 1
+        s[counts_key] = counts
+        s[f"mode_{field}"] = _get_boolean_mode(counts, tie_breaker)
+
+    # gear & composition textual aggregates
+    gear_tips = list(s.get("recent_gear_recommendations") or [])
+    new_gear = review.get("gear_recommendations") or ""
+    if new_gear.strip():
+        gear_tips = [new_gear.strip()] + gear_tips
+        s["recent_gear_recommendations"] = gear_tips[:5]
+
+    comp_tips = list(s.get("recent_composition_hints") or [])
+    new_comp = review.get("composition_hints") or ""
+    if new_comp.strip():
+        comp_tips = [new_comp.strip()] + comp_tips
+        s["recent_composition_hints"] = comp_tips[:5]
+
     entry = {
         "review_id": review_id,
         "photo_url": review["photo_urls"][0],
@@ -124,6 +184,23 @@ def jittered_coord(center_lat: float, center_lng: float, max_km: float):
     return center_lat + dlat, center_lng + dlng
 
 
+GEAR_POOL = [
+    "Wide-angle lens (14-24mm) is perfect here.",
+    "Bring a solid carbon tripod for low-light shots.",
+    "Highly recommend an ND filter for long exposures.",
+    "A fast f/1.8 prime lens works best after dusk.",
+    "Circular polarizer will save you from water glare.",
+]
+
+COMP_POOL = [
+    "Use the leading lines of the pathway towards the center.",
+    "Get extremely low to frame elements in the foreground.",
+    "Position your subject on the right third of the frame.",
+    "Shoot through the tree branches for a natural vignette.",
+    "Catch the light reflections on wet surfaces.",
+]
+
+
 def make_review(spot_id: str, user_uid: str, created_at: datetime):
     review_id = str(uuid4())
     photo_count = random.randint(1, 3)
@@ -140,6 +217,11 @@ def make_review(spot_id: str, user_uid: str, created_at: datetime):
         "entrance_fee": random.choices(ENTRANCE_FEES, weights=[4, 1, 1])[0],
         "crowd_level": random.choices(CROWD_LEVELS, weights=[1, 3, 3, 1])[0],
         "environment": random.choice(ENVIRONMENTS),
+        "permit_required": random.choice([True, False]),
+        "drone_allowed": random.choice([True, False]),
+        "tripod_allowed": random.choice([True, False]),
+        "gear_recommendations": random.choice(GEAR_POOL),
+        "composition_hints": random.choice(COMP_POOL),
         "created_at": created_at,
     }
 
