@@ -1,11 +1,17 @@
 """Spot endpoints — nearby query, single spot, and submission routes."""
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Form, Query
 
 from app.api.v1.deps import current_uid
-from app.schemas.enums import validate_enum, validate_enum_list
 from app.schemas.pagination import PaginatedReviews
-from app.schemas.review import ReviewResponse, SubmitReviewWithNewSpotResponse
+from app.schemas.review import (
+    ReviewCreate,
+    ReviewResponse,
+    SpotWithReviewCreate,
+    SubmitReviewWithNewSpotResponse,
+)
 from app.schemas.spot import SpotResponse, SpotSummaryResponse
 from app.services import geocoding, review_service, spot_service
 
@@ -48,52 +54,17 @@ async def get_spot_reviews(
 @router.post("/spots/{spot_id}/reviews", response_model=ReviewResponse, status_code=201)
 async def submit_review(
     spot_id: str,
-    permit_required: bool = Form(...),
-    drone_allowed: bool = Form(...),
-    tripod_allowed: bool = Form(...),
-    photos: list[UploadFile] = File(...),
-    overall_rating: int = Form(..., ge=1, le=5),
-    notes: str = Form(..., min_length=1, max_length=1000),
-    best_time_of_day: list[str] = Form(...),
-    access_level: str = Form(...),
-    entrance_fee: str = Form(...),
-    crowd_level: str = Form(...),
-    environment: str = Form(...),
-    gear_recommendations: str = Form(""),
-    composition_hints: str = Form(""),
+    data: Annotated[ReviewCreate, Form()],
     uid: str = Depends(current_uid),
 ):
     """
     Submit a review for an existing spot (multipart).
 
-    Photos: repeated key, one part per file, JPEG only, ≤10MB each, 1–5 total.
-    best_time_of_day: repeated key.
-    All enums: exact capitalized strings ("Easy", not "easy").
+    Photos: repeated `photos` key, one part per file, JPEG only, ≤10MB each, 1–10 total.
+    All content fields except overall_rating are optional; enums are validated by
+    the ReviewCreate model (exact capitalized strings, e.g. "Easy" not "easy").
     """
-    # Validate enums explicitly — FastAPI Form doesn't enforce Literal types
-    validate_enum("access_level", access_level)
-    validate_enum("entrance_fee", entrance_fee)
-    validate_enum("crowd_level", crowd_level)
-    validate_enum("environment", environment)
-    validate_enum_list("best_time_of_day", best_time_of_day)
-
-    return await review_service.submit_review(
-        spot_id=spot_id,
-        photos=photos,
-        overall_rating=overall_rating,
-        notes=notes,
-        best_time_of_day=best_time_of_day,
-        access_level=access_level,
-        entrance_fee=entrance_fee,
-        crowd_level=crowd_level,
-        environment=environment,
-        permit_required=permit_required,
-        drone_allowed=drone_allowed,
-        tripod_allowed=tripod_allowed,
-        gear_recommendations=gear_recommendations,
-        composition_hints=composition_hints,
-        uid=uid,
-    )
+    return await review_service.submit_review(spot_id=spot_id, data=data, uid=uid)
 
 
 @router.post(
@@ -102,22 +73,7 @@ async def submit_review(
     status_code=201,
 )
 async def submit_with_new_spot(
-    permit_required: bool = Form(...),
-    drone_allowed: bool = Form(...),
-    tripod_allowed: bool = Form(...),
-    photos: list[UploadFile] = File(...),
-    name: str = Form(..., min_length=1, max_length=200),
-    lat: float = Form(..., ge=-90, le=90),
-    lng: float = Form(..., ge=-180, le=180),
-    overall_rating: int = Form(..., ge=1, le=5),
-    notes: str = Form(..., min_length=1, max_length=1000),
-    best_time_of_day: list[str] = Form(...),
-    access_level: str = Form(...),
-    entrance_fee: str = Form(...),
-    crowd_level: str = Form(...),
-    environment: str = Form(...),
-    gear_recommendations: str = Form(""),
-    composition_hints: str = Form(""),
+    data: Annotated[SpotWithReviewCreate, Form()],
     uid: str = Depends(current_uid),
 ):
     """
@@ -126,33 +82,7 @@ async def submit_with_new_spot(
     Reverse-geocodes lat/lng for city/admin_area/country.
     Geocoding failure → 503 GEOCODING_FAILED (nothing uploaded yet).
     """
-    # Validate enums
-    validate_enum("access_level", access_level)
-    validate_enum("entrance_fee", entrance_fee)
-    validate_enum("crowd_level", crowd_level)
-    validate_enum("environment", environment)
-    validate_enum_list("best_time_of_day", best_time_of_day)
-
     # Reverse-geocode BEFORE uploading photos — fail fast
-    geo_data = await geocoding.reverse(lat, lng)
+    geo_data = await geocoding.reverse(data.lat, data.lng)
 
-    return await review_service.submit_with_new_spot(
-        photos=photos,
-        name=name,
-        lat=lat,
-        lng=lng,
-        overall_rating=overall_rating,
-        notes=notes,
-        best_time_of_day=best_time_of_day,
-        access_level=access_level,
-        entrance_fee=entrance_fee,
-        crowd_level=crowd_level,
-        environment=environment,
-        permit_required=permit_required,
-        drone_allowed=drone_allowed,
-        tripod_allowed=tripod_allowed,
-        gear_recommendations=gear_recommendations,
-        composition_hints=composition_hints,
-        uid=uid,
-        geo_data=geo_data,
-    )
+    return await review_service.submit_with_new_spot(data=data, uid=uid, geo_data=geo_data)

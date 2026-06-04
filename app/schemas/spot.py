@@ -24,11 +24,11 @@ class SpotResponse(BaseModel):
     review_count: int
     avg_rating: float
     recent_review_photos: list[RecentReviewPhoto] = []
-    mode_access_level: str
-    mode_entrance_fee: str
-    mode_crowd_level: str
-    mode_environment: str
+    mode_access_level: Optional[str] = None
+    mode_entrance_fee: Optional[str] = None
+    mode_crowd_level: Optional[str] = None
     best_times: list[str] = []
+    best_seasons: list[str] = []
     mode_permit_required: Optional[bool] = None
     mode_drone_allowed: Optional[bool] = None
     mode_tripod_allowed: Optional[bool] = None

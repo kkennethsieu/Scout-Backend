@@ -91,12 +91,29 @@ make lint
 | **GET** | `/spots` | ✓ | Find nearby spots within radius (lat/lng/radius_km) |
 | **GET** | `/spots/{id}` | ✓ | Retrieve a single spot's details and computed aggregates |
 | **GET** | `/spots/{id}/reviews` | ✓ | Fetch paginated review feed for a spot |
-| **POST** | `/spots/{id}/reviews` | ✓ | Submit a new review for an existing spot (multipart JPEG) |
-| **POST** | `/spots/with-review` | ✓ | Submit a brand new spot and its first review atomically |
+| **POST** | `/spots/{id}/reviews` | ✓ | Submit a new review for an existing spot (multipart JPEG, 1–10 photos) |
+| **POST** | `/spots/with-review` | ✓ | Submit a brand new spot and its first review atomically (409 if a spot already exists within 50 m) |
 | **GET** | `/reviews/{id}` | ✓ | Retrieve detailed info for a single review |
 | **GET** | `/users/me/reviews` | ✓ | Fetch the current user's submitted reviews paginated |
 
 ---
 
 ## Error Codes
-`SPOT_NOT_FOUND`, `REVIEW_NOT_FOUND`, `USER_NOT_FOUND`, `PHOTO_INVALID_FORMAT`, `PHOTO_TOO_LARGE`, `PHOTO_COUNT_INVALID`, `INVALID_ENUM_VALUE`, `INVALID_CURSOR`, `GEOCODING_FAILED`, `INVALID_TOKEN`, `MISSING_TOKEN`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`.
+`SPOT_NOT_FOUND`, `REVIEW_NOT_FOUND`, `USER_NOT_FOUND`, `SPOT_ALREADY_EXISTS`, `PHOTO_INVALID_FORMAT`, `PHOTO_TOO_LARGE`, `PHOTO_COUNT_INVALID`, `INVALID_ENUM_VALUE`, `INVALID_CURSOR`, `GEOCODING_FAILED`, `INVALID_TOKEN`, `MISSING_TOKEN`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`.
+
+`SPOT_ALREADY_EXISTS` (409) carries extra fields beyond `{detail, code}`: `spot_id`, `name`, `distance_m` — so the client can deep-link to the existing spot.
+
+## Review Submission Contract
+
+Reviews are sent as flat **multipart/form-data** (a Pydantic form-model binds the fields):
+
+- **Required:** `photos` (repeated key, 1–10 JPEGs, ≤10 MB each) and `overall_rating` (1–5).
+- **Everything else is optional.** An omitted field means "the submitter didn't answer" — which is distinct from a negative answer.
+- **Tristate booleans** `permit_required` / `drone_allowed` / `tripod_allowed`: `true` / `false` / omitted (unknown). Spot aggregates surface `null` for a field nobody has answered yet.
+- **Constrained vocabularies** (exact capitalized strings — frontend and backend must match):
+  - `access_level`: `Easy`, `Moderate`, `Difficult`
+  - `entrance_fee`: `Free`, `Paid`, `Permit`
+  - `crowd_level`: `Empty`, `Light`, `Moderate`, `Crowded`
+  - `best_time_of_day` (list): `Sunrise`, `GoldenHour`, `BlueHour`, `Midday`, `Night`
+  - `best_season` (list): `Spring`, `Summer`, `Fall`, `Winter`, `YearRound`
+- **Text fields** `notes`, `gear_recommendations`, `composition_hints` are capped at 2000 chars.

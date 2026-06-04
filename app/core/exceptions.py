@@ -4,10 +4,11 @@
 class DomainError(Exception):
     """Base class for all domain errors. Caught by the global handler in main.py."""
 
-    def __init__(self, status: int, code: str, detail: str):
+    def __init__(self, status: int, code: str, detail: str, payload: dict | None = None):
         self.status = status
         self.code = code
         self.detail = detail
+        self.payload = payload or {}
 
 
 class SpotNotFound(DomainError):
@@ -37,7 +38,7 @@ class PhotoTooLarge(DomainError):
 
 class PhotoCountInvalid(DomainError):
     def __init__(self):
-        super().__init__(400, "PHOTO_COUNT_INVALID", "Must include 1–5 photos")
+        super().__init__(400, "PHOTO_COUNT_INVALID", "Must include 1–10 photos")
 
 
 class InvalidEnumValue(DomainError):
@@ -76,3 +77,17 @@ class UpstreamUnavailable(DomainError):
 class InternalError(DomainError):
     def __init__(self):
         super().__init__(500, "INTERNAL_ERROR", "Internal server error")
+
+
+class SpotAlreadyExists(DomainError):
+    def __init__(self, spot_id: str, name: str, distance_m: float):
+        super().__init__(
+            status=409,
+            code="SPOT_ALREADY_EXISTS",
+            detail=f"A spot named '{name}' already exists nearby ({int(distance_m)}m away).",
+            payload={
+                "spot_id": spot_id,
+                "name": name,
+                "distance_m": distance_m,
+            },
+        )

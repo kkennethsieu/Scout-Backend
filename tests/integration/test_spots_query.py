@@ -133,4 +133,3 @@ class TestSpotsQuery:
         assert "mode_access_level" not in spot
         assert "mode_entrance_fee" not in spot
         assert "mode_crowd_level" not in spot
-        assert "mode_environment" not in spot

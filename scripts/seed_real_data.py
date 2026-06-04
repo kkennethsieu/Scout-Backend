@@ -67,7 +67,7 @@ BEST_TIMES = ["Sunrise", "GoldenHour", "BlueHour", "Midday", "Night"]
 ACCESS_LEVELS = ["Easy", "Moderate", "Difficult"]
 ENTRANCE_FEES = ["Free", "Paid", "Permit"]
 CROWD_LEVELS = ["Empty", "Light", "Moderate", "Crowded"]
-ENVIRONMENTS = ["Urban", "Nature", "Coastal", "Mountain", "Desert", "Indoor"]
+SEASONS = ["Spring", "Summer", "Fall", "Winter", "YearRound"]
 
 
 # --- Aggregate logic (duplicated here to avoid pulling in the app package
@@ -82,14 +82,14 @@ def empty_aggregates() -> dict:
         "access_level_counts": {},
         "entrance_fee_counts": {},
         "crowd_level_counts": {},
-        "environment_counts": {},
-        "mode_access_level": "",
-        "mode_entrance_fee": "",
-        "mode_crowd_level": "",
-        "mode_environment": "",
+        "mode_access_level": None,
+        "mode_entrance_fee": None,
+        "mode_crowd_level": None,
         "recent_review_photos": [],
         "best_time_of_day_counts": {},
         "best_times": [],
+        "best_season_counts": {},
+        "best_seasons": [],
         "permit_required_counts": {},
         "drone_allowed_counts": {},
         "tripod_allowed_counts": {},
@@ -101,12 +101,12 @@ def empty_aggregates() -> dict:
     }
 
 
-def _get_boolean_mode(counts: dict, tie_breaker: bool) -> bool:
-    """Majority vote for booleans stored as 'true'/'false' keys. Deterministic tie-breaker."""
+def _get_boolean_mode(counts: dict, tie_breaker: bool) -> bool | None:
+    """Tristate majority vote. None when nobody answered; tie_breaker only for real ties."""
     true_count = counts.get("true", 0)
     false_count = counts.get("false", 0)
     if true_count == 0 and false_count == 0:
-        return tie_breaker
+        return None
     if true_count == false_count:
         return tie_breaker
     return true_count > false_count
@@ -119,34 +119,40 @@ def update_or_init_aggregates(spot: dict, review: dict, review_id: str) -> dict:
     new_count = old_count + 1
     s["review_count"] = new_count
     s["avg_rating"] = (old_avg * old_count + review["overall_rating"]) / new_count
-    for field in ("access_level", "entrance_fee", "crowd_level", "environment"):
+    for field in ("access_level", "entrance_fee", "crowd_level"):
+        v = review.get(field)
+        if v is None:
+            continue
         ck = f"{field}_counts"
         counts = dict(s.get(ck) or {})
-        v = review[field]
         counts[v] = counts.get(v, 0) + 1
         s[ck] = counts
         s[f"mode_{field}"] = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
 
-    # best_time_of_day aggregation
-    best_time_counts = dict(s.get("best_time_of_day_counts") or {})
-    for val in review.get("best_time_of_day") or []:
-        best_time_counts[val] = best_time_counts.get(val, 0) + 1
-    s["best_time_of_day_counts"] = best_time_counts
-    s["best_times"] = [
-        item[0]
-        for item in sorted(best_time_counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        if item[1] > 0
-    ]
+    # best_time_of_day + best_season (multi-value) aggregation
+    for field, list_key in (("best_time_of_day", "best_times"), ("best_season", "best_seasons")):
+        ck = f"{field}_counts"
+        counts = dict(s.get(ck) or {})
+        for val in review.get(field) or []:
+            counts[val] = counts.get(val, 0) + 1
+        s[ck] = counts
+        s[list_key] = [
+            item[0]
+            for item in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            if item[1] > 0
+        ]
 
-    # access & logistics boolean aggregation
+    # access & logistics tristate boolean aggregation (skip unanswered None)
     for field, tie_breaker in [
         ("permit_required", True),
         ("drone_allowed", False),
         ("tripod_allowed", False),
     ]:
+        val = review.get(field)
+        if val is None:
+            continue
         counts_key = f"{field}_counts"
         counts = dict(s.get(counts_key) or {})
-        val = review[field]
         val_str = "true" if val else "false"
         counts[val_str] = counts.get(val_str, 0) + 1
         s[counts_key] = counts
@@ -216,7 +222,7 @@ def make_review(spot_id: str, user_uid: str, created_at: datetime):
         "access_level": random.choices(ACCESS_LEVELS, weights=[3, 2, 1])[0],
         "entrance_fee": random.choices(ENTRANCE_FEES, weights=[4, 1, 1])[0],
         "crowd_level": random.choices(CROWD_LEVELS, weights=[1, 3, 3, 1])[0],
-        "environment": random.choice(ENVIRONMENTS),
+        "best_season": random.sample(SEASONS, k=random.randint(1, 2)),
         "permit_required": random.choice([True, False]),
         "drone_allowed": random.choice([True, False]),
         "tripod_allowed": random.choice([True, False]),

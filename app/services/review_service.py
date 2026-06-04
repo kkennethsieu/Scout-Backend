@@ -4,7 +4,6 @@ import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import UploadFile
 from firebase_admin import firestore
 from google.api_core.exceptions import GoogleAPICallError
 
@@ -12,11 +11,19 @@ from app.core.exceptions import (
     InternalError,
     InvalidCursor,
     ReviewNotFound,
+    SpotAlreadyExists,
     SpotNotFound,
     UpstreamUnavailable,
 )
 from app.core.firebase import db
+from app.schemas.review import (
+    _CREATE_ONLY_FIELDS,
+    _SPOT_ONLY_FIELDS,
+    ReviewCreate,
+    SpotWithReviewCreate,
+)
 from app.services.aggregates import empty_aggregates, update_or_init_aggregates
+from app.services.geo import bounding_box, haversine_km
 from app.services.storage_service import cleanup, upload_photos, validate_photo_count
 
 log = logging.getLogger(__name__)
@@ -110,19 +117,7 @@ async def get_reviews_for_user(user_id: str, limit: int = 20, cursor: str | None
 
 async def submit_review(
     spot_id: str,
-    photos: list[UploadFile],
-    overall_rating: int,
-    notes: str,
-    best_time_of_day: list[str],
-    access_level: str,
-    entrance_fee: str,
-    crowd_level: str,
-    environment: str,
-    permit_required: bool,
-    drone_allowed: bool,
-    tripod_allowed: bool,
-    gear_recommendations: str,
-    composition_hints: str,
+    data: ReviewCreate,
     uid: str,
 ) -> dict:
     """
@@ -138,7 +133,7 @@ async def submit_review(
     now = datetime.now(timezone.utc)
 
     # 1. Validate photo count
-    validate_photo_count(photos)
+    validate_photo_count(data.photos)
 
     # 2. Verify spot exists
     spot_ref = db.collection("spots").document(spot_id)
@@ -148,26 +143,15 @@ async def submit_review(
 
     # 3. Upload photos
     review_id = str(uuid4())
-    photo_urls, photo_paths = await upload_photos(review_id, photos)
+    photo_urls, photo_paths = await upload_photos(review_id, data.photos)
 
     # 4. Firestore transaction
     review_ref = db.collection("reviews").document(review_id)
     review_dict = {
+        **data.model_dump(exclude=_CREATE_ONLY_FIELDS),
         "spot_id": spot_id,
         "user_id": uid,
         "photo_urls": photo_urls,
-        "overall_rating": overall_rating,
-        "notes": notes,
-        "best_time_of_day": best_time_of_day,
-        "access_level": access_level,
-        "entrance_fee": entrance_fee,
-        "crowd_level": crowd_level,
-        "environment": environment,
-        "permit_required": permit_required,
-        "drone_allowed": drone_allowed,
-        "tripod_allowed": tripod_allowed,
-        "gear_recommendations": gear_recommendations,
-        "composition_hints": composition_hints,
         "created_at": now,
     }
 
@@ -206,71 +190,47 @@ async def submit_review(
 
 
 async def submit_with_new_spot(
-    photos: list[UploadFile],
-    name: str,
-    lat: float,
-    lng: float,
-    overall_rating: int,
-    notes: str,
-    best_time_of_day: list[str],
-    access_level: str,
-    entrance_fee: str,
-    crowd_level: str,
-    environment: str,
-    permit_required: bool,
-    drone_allowed: bool,
-    tripod_allowed: bool,
-    gear_recommendations: str,
-    composition_hints: str,
+    data: SpotWithReviewCreate,
     uid: str,
     geo_data: dict,
 ) -> dict:
     """
     Create a new spot + first review atomically.
 
-    Uses BATCHED WRITE (not transaction) since both docs are new — no reads needed.
+    Uses a FIRESTORE TRANSACTION to verify that no duplicate spot exists nearby
+    (within 50 meters) before performing writes, preventing race conditions.
 
     Flow:
     1. Validate photo count
     2. Geocoding already done by caller (geo_data passed in)
     3. Upload photos to Storage
-    4. Build spot + review docs, batch write
+    4. Build spot + review docs, run duplicate check & write inside transaction
     5. On failure → cleanup photos
     """
     now = datetime.now(timezone.utc)
+    lat, lng = data.lat, data.lng
 
     # 1. Validate photo count
-    validate_photo_count(photos)
+    validate_photo_count(data.photos)
 
     # 2. Generate IDs
     spot_id = str(uuid4())
     review_id = str(uuid4())
 
     # 3. Upload photos
-    photo_urls, photo_paths = await upload_photos(review_id, photos)
+    photo_urls, photo_paths = await upload_photos(review_id, data.photos)
 
-    # 4. Build docs
+    # 4. Build docs (drop spot-only and create-only fields from the review payload)
     review_dict = {
+        **data.model_dump(exclude=_CREATE_ONLY_FIELDS | _SPOT_ONLY_FIELDS),
         "spot_id": spot_id,
         "user_id": uid,
         "photo_urls": photo_urls,
-        "overall_rating": overall_rating,
-        "notes": notes,
-        "best_time_of_day": best_time_of_day,
-        "access_level": access_level,
-        "entrance_fee": entrance_fee,
-        "crowd_level": crowd_level,
-        "environment": environment,
-        "permit_required": permit_required,
-        "drone_allowed": drone_allowed,
-        "tripod_allowed": tripod_allowed,
-        "gear_recommendations": gear_recommendations,
-        "composition_hints": composition_hints,
         "created_at": now,
     }
 
     spot_dict = {
-        "name": name,
+        "name": data.name,
         "public_lat": lat,
         "public_lng": lng,
         "city": geo_data["city"],
@@ -281,21 +241,51 @@ async def submit_with_new_spot(
     }
     spot_dict = update_or_init_aggregates(spot_dict, review_dict, review_id)
 
-    # 5. Batched write — atomic, no reads needed
+    # 5. Run transaction with duplicate spot verification
     spot_ref = db.collection("spots").document(spot_id)
     review_ref = db.collection("reviews").document(review_id)
+    transaction = db.transaction()
+
+    DUPLICATE_SPOT_THRESHOLD_KM = 0.05  # 50 meters
 
     try:
-        batch = db.batch()
-        batch.set(spot_ref, spot_dict)
-        batch.set(review_ref, review_dict)
-        batch.commit()
+
+        @firestore.transactional
+        def _submit_in_txn(txn):
+            # Check for nearby spots inside the transaction
+            min_lat, max_lat, min_lng, max_lng = bounding_box(lat, lng, DUPLICATE_SPOT_THRESHOLD_KM)
+            query = (
+                db.collection("spots")
+                .where("public_lat", ">=", min_lat)
+                .where("public_lat", "<=", max_lat)
+            )
+            candidates = list(query.get(transaction=txn))
+            for doc in candidates:
+                s = doc.to_dict()
+                if not (min_lng <= s["public_lng"] <= max_lng):
+                    continue
+                d = haversine_km(lat, lng, s["public_lat"], s["public_lng"])
+                if d <= DUPLICATE_SPOT_THRESHOLD_KM:
+                    raise SpotAlreadyExists(
+                        spot_id=doc.id,
+                        name=s["name"],
+                        distance_m=d * 1000.0,
+                    )
+
+            # Perform atomic writes
+            txn.set(spot_ref, spot_dict)
+            txn.set(review_ref, review_dict)
+
+        _submit_in_txn(transaction)
+    except SpotAlreadyExists:
+        await cleanup(photo_paths)
+        raise
     except GoogleAPICallError as e:
-        log.error("Batch write failed: %s", str(e))
+        log.error("Transaction failed: %s", str(e))
         await cleanup(photo_paths)
         raise UpstreamUnavailable()
     except Exception as e:
-        log.error("Batch write failed: %s", str(e))
+        log.error("Transaction failed: %s", str(e))
         await cleanup(photo_paths)
         raise InternalError()
 

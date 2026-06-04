@@ -18,14 +18,14 @@ def empty_aggregates() -> dict:
         "access_level_counts": {},
         "entrance_fee_counts": {},
         "crowd_level_counts": {},
-        "environment_counts": {},
-        "mode_access_level": "",
-        "mode_entrance_fee": "",
-        "mode_crowd_level": "",
-        "mode_environment": "",
+        "mode_access_level": None,
+        "mode_entrance_fee": None,
+        "mode_crowd_level": None,
         "recent_review_photos": [],
         "best_time_of_day_counts": {},
         "best_times": [],
+        "best_season_counts": {},
+        "best_seasons": [],
         "permit_required_counts": {},
         "drone_allowed_counts": {},
         "tripod_allowed_counts": {},
@@ -37,12 +37,17 @@ def empty_aggregates() -> dict:
     }
 
 
-def _get_boolean_mode(counts: dict, tie_breaker: bool) -> bool:
-    """Majority vote for booleans stored as 'true'/'false' keys. Deterministic tie-breaker."""
+def _get_boolean_mode(counts: dict, tie_breaker: bool) -> bool | None:
+    """
+    Majority vote for tristate booleans stored as 'true'/'false' keys.
+
+    Returns None when nobody answered (unanswered ≠ "no"). Once there are real
+    answers, ties fall back to the deterministic tie_breaker.
+    """
     true_count = counts.get("true", 0)
     false_count = counts.get("false", 0)
     if true_count == 0 and false_count == 0:
-        return tie_breaker
+        return None
     if true_count == false_count:
         return tie_breaker
     return true_count > false_count
@@ -67,36 +72,47 @@ def update_or_init_aggregates(spot_data: dict, new_review: dict, new_review_id: 
     s["review_count"] = new_count
     s["avg_rating"] = (old_avg * old_count + new_review["overall_rating"]) / new_count
 
-    # --- mode fields via running counts ---
-    for field in ("access_level", "entrance_fee", "crowd_level", "environment"):
+    # --- single-value mode fields via running counts ---
+    # Unanswered (None) isn't a vote: skip it so the existing mode is preserved.
+    for field in ("access_level", "entrance_fee", "crowd_level"):
+        v = new_review.get(field)
+        if v is None:
+            continue
         counts_key = f"{field}_counts"
         counts = dict(s.get(counts_key) or {})
-        v = new_review[field]
         counts[v] = counts.get(v, 0) + 1
         s[counts_key] = counts
         # Deterministic tie-break: highest count, then alphabetical
         s[f"mode_{field}"] = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
 
-    # --- best_time_of_day aggregation ---
-    best_time_counts = dict(s.get("best_time_of_day_counts") or {})
-    for val in new_review.get("best_time_of_day") or []:
-        best_time_counts[val] = best_time_counts.get(val, 0) + 1
-    s["best_time_of_day_counts"] = best_time_counts
-    s["best_times"] = [
-        item[0]
-        for item in sorted(best_time_counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        if item[1] > 0
-    ]
+    # --- multi-value aggregations (best_time_of_day, best_season) ---
+    for field, list_key in (
+        ("best_time_of_day", "best_times"),
+        ("best_season", "best_seasons"),
+    ):
+        counts_key = f"{field}_counts"
+        counts = dict(s.get(counts_key) or {})
+        for val in new_review.get(field) or []:
+            counts[val] = counts.get(val, 0) + 1
+        s[counts_key] = counts
+        s[list_key] = [
+            item[0]
+            for item in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            if item[1] > 0
+        ]
 
-    # --- access & logistics boolean aggregation ---
+    # --- access & logistics tristate boolean aggregation ---
+    # Unanswered (None) isn't a vote: skip it so the existing mode is preserved.
     for field, tie_breaker in [
         ("permit_required", True),
         ("drone_allowed", False),
         ("tripod_allowed", False),
     ]:
+        val = new_review.get(field)
+        if val is None:
+            continue
         counts_key = f"{field}_counts"
         counts = dict(s.get(counts_key) or {})
-        val = new_review[field]
         val_str = "true" if val else "false"
         counts[val_str] = counts.get(val_str, 0) + 1
         s[counts_key] = counts

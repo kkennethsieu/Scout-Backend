@@ -1,58 +1,86 @@
-"""Unit tests for Pydantic schemas and enum validation."""
+"""Unit tests for Pydantic schemas and model-level validation.
+
+Validation now happens at the Pydantic boundary (ReviewBase/ReviewCreate),
+so these tests exercise the Literal vocabularies, optionality, and field
+constraints directly instead of the old validate_enum() helpers.
+"""
 
 from datetime import datetime, timezone
 
 import pytest
+from pydantic import ValidationError
 
-from app.core.exceptions import InvalidEnumValue
-from app.schemas.enums import validate_enum, validate_enum_list
 from app.schemas.error import ErrorResponse
 from app.schemas.pagination import PaginatedReviews
-from app.schemas.review import ReviewResponse
+from app.schemas.review import ReviewBase, ReviewResponse
 from app.schemas.spot import SpotResponse
 from app.schemas.user import UserResponse
 
 
-class TestEnumValidation:
-    """Test explicit enum validation."""
+class TestReviewBaseValidation:
+    """Literal vocabularies, optionality, and constraints on review content."""
 
-    def test_valid_access_level(self):
-        assert validate_enum("access_level", "Easy") == "Easy"
-        assert validate_enum("access_level", "Moderate") == "Moderate"
-        assert validate_enum("access_level", "Difficult") == "Difficult"
+    def test_minimal_only_rating(self):
+        """Everything except overall_rating is optional and defaults to None/empty."""
+        r = ReviewBase(overall_rating=4)
+        assert r.overall_rating == 4
+        assert r.notes is None
+        assert r.access_level is None
+        assert r.best_time_of_day == []
+        assert r.best_season == []
+        assert r.permit_required is None  # tristate: unanswered
 
-    def test_invalid_access_level(self):
-        with pytest.raises(InvalidEnumValue):
-            validate_enum("access_level", "easy")  # lowercase
+    def test_overall_rating_required(self):
+        with pytest.raises(ValidationError):
+            ReviewBase()
 
-    def test_invalid_access_level_unknown(self):
-        with pytest.raises(InvalidEnumValue):
-            validate_enum("access_level", "Hard")
+    @pytest.mark.parametrize("rating", [0, 6, -1])
+    def test_overall_rating_bounds(self, rating):
+        with pytest.raises(ValidationError):
+            ReviewBase(overall_rating=rating)
 
-    def test_valid_best_time_list(self):
-        result = validate_enum_list("best_time_of_day", ["Sunrise", "GoldenHour"])
-        assert result == ["Sunrise", "GoldenHour"]
+    @pytest.mark.parametrize("value", ["Easy", "Moderate", "Difficult"])
+    def test_valid_access_level(self, value):
+        assert ReviewBase(overall_rating=3, access_level=value).access_level == value
 
-    def test_invalid_best_time_list(self):
-        with pytest.raises(InvalidEnumValue):
-            validate_enum_list("best_time_of_day", ["Sunrise", "morning"])
+    @pytest.mark.parametrize("value", ["easy", "Hard", "EASY"])
+    def test_invalid_access_level(self, value):
+        with pytest.raises(ValidationError):
+            ReviewBase(overall_rating=3, access_level=value)
 
-    def test_valid_environment(self):
-        for v in ["Urban", "Nature", "Coastal", "Mountain", "Desert", "Indoor"]:
-            assert validate_enum("environment", v) == v
+    def test_valid_best_season(self):
+        r = ReviewBase(overall_rating=3, best_season=["Spring", "YearRound"])
+        assert r.best_season == ["Spring", "YearRound"]
 
-    def test_valid_crowd_level(self):
-        for v in ["Empty", "Light", "Moderate", "Crowded"]:
-            assert validate_enum("crowd_level", v) == v
+    def test_invalid_best_season(self):
+        with pytest.raises(ValidationError):
+            ReviewBase(overall_rating=3, best_season=["spring"])
 
-    def test_valid_entrance_fee(self):
-        for v in ["Free", "Paid", "Permit"]:
-            assert validate_enum("entrance_fee", v) == v
+    def test_valid_best_time_of_day(self):
+        r = ReviewBase(overall_rating=3, best_time_of_day=["Sunrise", "GoldenHour"])
+        assert r.best_time_of_day == ["Sunrise", "GoldenHour"]
+
+    def test_invalid_best_time_of_day(self):
+        with pytest.raises(ValidationError):
+            ReviewBase(overall_rating=3, best_time_of_day=["Sunset"])  # not in vocab
+
+    @pytest.mark.parametrize("value", [True, False, None])
+    def test_tristate_booleans(self, value):
+        r = ReviewBase(overall_rating=3, permit_required=value)
+        assert r.permit_required is value
+
+    def test_text_field_length_cap(self):
+        ReviewBase(overall_rating=3, notes="x" * 2000)  # ok at limit
+        with pytest.raises(ValidationError):
+            ReviewBase(overall_rating=3, notes="x" * 2001)
+
+    def test_no_environment_field(self):
+        """environment is gone — passing it is silently ignored, not stored."""
+        r = ReviewBase(overall_rating=3, environment="Urban")
+        assert not hasattr(r, "environment")
 
 
 class TestUserResponseSchema:
-    """Test UserResponse schema."""
-
     def test_valid_user(self):
         user = UserResponse(
             uid="abc123",
@@ -75,8 +103,6 @@ class TestUserResponseSchema:
 
 
 class TestSpotResponseSchema:
-    """Test SpotResponse schema."""
-
     def test_valid_spot(self):
         spot = SpotResponse(
             id="spot-1",
@@ -92,8 +118,8 @@ class TestSpotResponseSchema:
             mode_access_level="Easy",
             mode_entrance_fee="Free",
             mode_crowd_level="Light",
-            mode_environment="Urban",
             best_times=["GoldenHour", "Sunrise"],
+            best_seasons=["Spring", "Fall"],
             mode_permit_required=False,
             mode_drone_allowed=False,
             mode_tripod_allowed=True,
@@ -102,12 +128,27 @@ class TestSpotResponseSchema:
             recent_review_photos=[],
         )
         assert spot.id == "spot-1"
-        assert spot.avg_rating == 4.2
+        assert spot.best_seasons == ["Spring", "Fall"]
+
+    def test_mode_fields_optional(self):
+        """A spot whose reviews never answered the enum fields → mode_* is None."""
+        spot = SpotResponse(
+            id="spot-1",
+            name="Test Spot",
+            public_lat=0.0,
+            public_lng=0.0,
+            city="X",
+            admin_area="Y",
+            country="Z",
+            created_at=datetime.now(timezone.utc),
+            review_count=1,
+            avg_rating=4.0,
+        )
+        assert spot.mode_access_level is None
+        assert spot.best_seasons == []
 
 
 class TestReviewResponseSchema:
-    """Test ReviewResponse schema."""
-
     def test_valid_review(self):
         review = ReviewResponse(
             id="rev-1",
@@ -117,23 +158,44 @@ class TestReviewResponseSchema:
             overall_rating=4,
             notes="Great spot!",
             best_time_of_day=["Sunrise", "GoldenHour"],
+            best_season=["Summer"],
             access_level="Easy",
             entrance_fee="Free",
             crowd_level="Light",
-            environment="Urban",
             permit_required=False,
-            drone_allowed=False,
+            drone_allowed=None,
             tripod_allowed=True,
             gear_recommendations="Wide angle lens",
             composition_hints="Get low for foreground",
             created_at=datetime.now(timezone.utc),
         )
         assert review.overall_rating == 4
+        assert review.drone_allowed is None
+
+    def test_photo_urls_min_one(self):
+        with pytest.raises(ValidationError):
+            ReviewResponse(
+                id="rev-1",
+                spot_id="spot-1",
+                user_id="user-1",
+                photo_urls=[],
+                overall_rating=4,
+                created_at=datetime.now(timezone.utc),
+            )
+
+    def test_photo_urls_max_ten(self):
+        with pytest.raises(ValidationError):
+            ReviewResponse(
+                id="rev-1",
+                spot_id="spot-1",
+                user_id="user-1",
+                photo_urls=[f"u{i}" for i in range(11)],
+                overall_rating=4,
+                created_at=datetime.now(timezone.utc),
+            )
 
 
 class TestPaginatedReviewsSchema:
-    """Test PaginatedReviews schema."""
-
     def test_empty_page(self):
         page = PaginatedReviews(items=[], limit=20, next_cursor=None)
         assert page.items == []
@@ -145,8 +207,21 @@ class TestPaginatedReviewsSchema:
 
 
 class TestErrorResponseSchema:
-    """Test ErrorResponse schema."""
-
     def test_error(self):
         err = ErrorResponse(detail="Not found", code="SPOT_NOT_FOUND")
         assert err.code == "SPOT_NOT_FOUND"
+
+
+class TestSpotAlreadyExistsException:
+    """Test SpotAlreadyExists exception structure."""
+
+    def test_exception_payload(self):
+        from app.core.exceptions import SpotAlreadyExists
+
+        exc = SpotAlreadyExists(spot_id="test-id", name="Scenic Spot", distance_m=12.3)
+        assert exc.status == 409
+        assert exc.code == "SPOT_ALREADY_EXISTS"
+        assert "Scenic Spot" in exc.detail
+        assert exc.payload["spot_id"] == "test-id"
+        assert exc.payload["name"] == "Scenic Spot"
+        assert exc.payload["distance_m"] == 12.3

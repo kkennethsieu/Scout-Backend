@@ -44,7 +44,10 @@ app.add_middleware(
 @app.exception_handler(DomainError)
 async def domain_error_handler(req, exc: DomainError):
     """Consistent {detail, code} JSON for all domain errors."""
-    return JSONResponse({"detail": exc.detail, "code": exc.code}, status_code=exc.status)
+    content = {"detail": exc.detail, "code": exc.code}
+    if exc.payload:
+        content.update(exc.payload)
+    return JSONResponse(content, status_code=exc.status)
 
 
 @app.exception_handler(RequestValidationError)

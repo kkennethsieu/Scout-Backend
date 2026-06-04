@@ -50,10 +50,10 @@ def _review_form_data(**overrides):
         "overall_rating": "4",
         "notes": "Great spot for photography!",
         "best_time_of_day": "Sunrise",
+        "best_season": "Summer",
         "access_level": "Easy",
         "entrance_fee": "Free",
         "crowd_level": "Light",
-        "environment": "Urban",
         "permit_required": False,
         "drone_allowed": False,
         "tripod_allowed": True,
@@ -105,9 +105,9 @@ class TestSubmitExistingSpot:
         assert r.json()["code"] == "SPOT_NOT_FOUND"
 
     def test_too_many_photos(self, client, auth_headers):
-        """6 photos → 400 PHOTO_COUNT_INVALID."""
+        """11 photos → 400 PHOTO_COUNT_INVALID (cap is 10)."""
         spot_id = _seed_spot()
-        photos = [("photos", _make_jpeg()) for _ in range(6)]
+        photos = [("photos", _make_jpeg()) for _ in range(11)]
 
         r = client.post(
             f"/spots/{spot_id}/reviews",

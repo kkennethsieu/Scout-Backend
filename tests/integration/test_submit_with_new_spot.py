@@ -23,10 +23,10 @@ def _spot_review_form_data(**overrides):
         "overall_rating": "5",
         "notes": "Amazing discovery!",
         "best_time_of_day": "Sunrise",
+        "best_season": "Summer",
         "access_level": "Easy",
         "entrance_fee": "Free",
         "crowd_level": "Empty",
-        "environment": "Urban",
         "permit_required": False,
         "drone_allowed": False,
         "tripod_allowed": True,
@@ -98,7 +98,18 @@ class TestSubmitWithNewSpot:
         """Invalid enum → 400 before any work is done."""
         r = client.post(
             "/spots/with-review",
-            data=_spot_review_form_data(environment="Forest"),
+            data=_spot_review_form_data(access_level="Sideways"),
+            files=[("photos", _make_jpeg())],
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+        assert r.json()["code"] == "INVALID_ENUM_VALUE"
+
+    def test_bad_season_rejected(self, client, auth_headers):
+        """Invalid best_season value → 400."""
+        r = client.post(
+            "/spots/with-review",
+            data=_spot_review_form_data(best_season="Autumn"),  # not in vocab (use Fall)
             files=[("photos", _make_jpeg())],
             headers=auth_headers,
         )
@@ -135,3 +146,43 @@ class TestSubmitWithNewSpot:
             files=[("photos", _make_jpeg())],
         )
         assert r.status_code == 401
+
+    def test_duplicate_spot_rejected_409(self, client, auth_headers):
+        """Spot submitted within 50 meters of an existing spot is rejected with 409 Conflict."""
+        # 1. Create first spot
+        r1 = client.post(
+            "/spots/with-review",
+            data=_spot_review_form_data(name="First Spot", lat="34.052200", lng="-118.243700"),
+            files=[("photos", _make_jpeg())],
+            headers=auth_headers,
+        )
+        assert r1.status_code == 201
+        first_spot_id = r1.json()["spot"]["id"]
+
+        # 2. Try to submit second spot very close (e.g. lat offset of 0.0001 degrees, approx 11m away)
+        r2 = client.post(
+            "/spots/with-review",
+            data=_spot_review_form_data(
+                name="Duplicate Close Spot", lat="34.052300", lng="-118.243700"
+            ),
+            files=[("photos", _make_jpeg())],
+            headers=auth_headers,
+        )
+        assert r2.status_code == 409
+        body = r2.json()
+        assert body["code"] == "SPOT_ALREADY_EXISTS"
+        assert body["spot_id"] == first_spot_id
+        assert body["name"] == "First Spot"
+        assert 0.0 < body["distance_m"] < 20.0
+
+        # 3. Submit a third spot further away (e.g. lat offset of 0.005 degrees, approx 550m away)
+        r3 = client.post(
+            "/spots/with-review",
+            data=_spot_review_form_data(
+                name="Distinct Far Spot", lat="34.057200", lng="-118.243700"
+            ),
+            files=[("photos", _make_jpeg())],
+            headers=auth_headers,
+        )
+        assert r3.status_code == 201
+        assert r3.json()["spot"]["name"] == "Distinct Far Spot"

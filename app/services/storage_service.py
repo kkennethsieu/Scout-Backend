@@ -49,8 +49,8 @@ def _upload_one_sync(path: str, data: bytes):
 
 
 def validate_photo_count(files: list[UploadFile]):
-    """Validate photo count is 1–5."""
-    if not files or len(files) < 1 or len(files) > 5:
+    """Validate photo count is 1–10."""
+    if not files or len(files) < 1 or len(files) > 10:
         raise PhotoCountInvalid()
 
 

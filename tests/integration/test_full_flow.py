@@ -52,10 +52,10 @@ class TestFullFlow:
             "overall_rating": "5",
             "notes": "Beautiful views of the city!",
             "best_time_of_day": "GoldenHour",
+            "best_season": "YearRound",
             "access_level": "Easy",
             "entrance_fee": "Free",
             "crowd_level": "Crowded",
-            "environment": "Urban",
             "permit_required": False,
             "drone_allowed": False,
             "tripod_allowed": False,
@@ -103,10 +103,10 @@ class TestFullFlow:
             "overall_rating": "3",
             "notes": "Very busy, difficult to find parking.",
             "best_time_of_day": "Night",
+            "best_season": "Winter",  # Changed
             "access_level": "Difficult",  # Changed
             "entrance_fee": "Free",
             "crowd_level": "Crowded",
-            "environment": "Nature",  # Changed
             "permit_required": False,
             "drone_allowed": False,
             "tripod_allowed": False,
