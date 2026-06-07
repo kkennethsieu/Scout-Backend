@@ -16,11 +16,13 @@ def empty_aggregates() -> dict:
         "review_count": 0,
         "avg_rating": 0.0,
         "access_level_counts": {},
-        "entrance_fee_counts": {},
         "crowd_level_counts": {},
         "mode_access_level": None,
-        "mode_entrance_fee": None,
         "mode_crowd_level": None,
+        # entrance_fee is a money number → running average, not a mode.
+        "entrance_fee_sum": 0.0,
+        "entrance_fee_n": 0,
+        "avg_entrance_fee": None,
         "recent_review_photos": [],
         "best_time_of_day_counts": {},
         "best_times": [],
@@ -74,7 +76,7 @@ def update_or_init_aggregates(spot_data: dict, new_review: dict, new_review_id: 
 
     # --- single-value mode fields via running counts ---
     # Unanswered (None) isn't a vote: skip it so the existing mode is preserved.
-    for field in ("access_level", "entrance_fee", "crowd_level"):
+    for field in ("access_level", "crowd_level"):
         v = new_review.get(field)
         if v is None:
             continue
@@ -84,6 +86,14 @@ def update_or_init_aggregates(spot_data: dict, new_review: dict, new_review_id: 
         s[counts_key] = counts
         # Deterministic tie-break: highest count, then alphabetical
         s[f"mode_{field}"] = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+    # --- entrance_fee running average (money number, not a mode) ---
+    # 0.00 (free) is a real data point and counts; None (unanswered) is skipped.
+    fee = new_review.get("entrance_fee")
+    if fee is not None:
+        s["entrance_fee_n"] = s.get("entrance_fee_n", 0) + 1
+        s["entrance_fee_sum"] = s.get("entrance_fee_sum", 0.0) + fee
+        s["avg_entrance_fee"] = round(s["entrance_fee_sum"] / s["entrance_fee_n"], 2)
 
     # --- multi-value aggregations (best_time_of_day, best_season) ---
     for field, list_key in (

@@ -49,31 +49,41 @@ def _upload_one_sync(path: str, data: bytes):
 
 
 def validate_photo_count(files: list[UploadFile]):
-    """Validate photo count is 1–10."""
-    if not files or len(files) < 1 or len(files) > 10:
+    """Validate photo count is 1–5."""
+    if not files or len(files) < 1 or len(files) > 5:
         raise PhotoCountInvalid()
 
 
 async def upload_photos(review_id: str, files: list[UploadFile]) -> tuple[list[str], list[str]]:
+    completed: list[tuple[str, str]] = []
+
     async def upload_one(file: UploadFile) -> tuple[str, str]:
         data = await file.read()
         if len(data) > settings.MAX_PHOTO_BYTES:
             raise PhotoTooLarge()
         _validate_image_content(data)
+        data = _strip_exif(data)
 
         path = f"reviews/{review_id}/photos/{uuid4()}.jpg"
         await asyncio.to_thread(_upload_one_sync, path, data)
-        return _public_url(path), path
+        result = (_public_url(path), path)
+        completed.append(result)  # track as soon as it's uploaded
+        return result
 
-    paths: list[str] = []
     try:
         results = await asyncio.gather(*[upload_one(f) for f in files])
-        urls = [r[0] for r in results]
-        paths = [r[1] for r in results]
-        return urls, paths
+        return [r[0] for r in results], [r[1] for r in results]
     except Exception:
-        await cleanup(paths)
+        await cleanup([r[1] for r in completed])
         raise
+
+
+def _strip_exif(data: bytes) -> bytes:
+    """Re-encode JPEG without EXIF metadata."""
+    img = Image.open(BytesIO(data))
+    out = BytesIO()
+    img.save(out, format="JPEG", quality=85)
+    return out.getvalue()
 
 
 async def cleanup(paths: list[str]):

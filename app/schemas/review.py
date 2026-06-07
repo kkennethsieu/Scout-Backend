@@ -12,15 +12,17 @@ exactly that distinction.
 """
 
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 from fastapi import UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.enums import AccessLevel, BestTimeOfDay, CrowdLevel, EntranceFee, Season
+from app.schemas.enums import AccessLevel, BestTimeOfDay, CrowdLevel, Season
 from app.schemas.spot import SpotResponse
 
 TEXT_MAX = 2000
+FEE_MAX = 100000  # upper guard ($) against garbage input
 
 
 class ReviewBase(BaseModel):
@@ -31,7 +33,8 @@ class ReviewBase(BaseModel):
     best_time_of_day: list[BestTimeOfDay] = []
     best_season: list[Season] = []
     access_level: Optional[AccessLevel] = None
-    entrance_fee: Optional[EntranceFee] = None
+    # Money: USD amount per person. 0 = free (confirmed); None = not answered.
+    entrance_fee: Optional[float] = Field(None, ge=0, le=FEE_MAX)
     crowd_level: Optional[CrowdLevel] = None
     # Tristate: True / False / None(unanswered) are three distinct answers.
     permit_required: Optional[bool] = None
@@ -39,6 +42,22 @@ class ReviewBase(BaseModel):
     tripod_allowed: Optional[bool] = None
     gear_recommendations: Optional[str] = Field(None, max_length=TEXT_MAX)
     composition_hints: Optional[str] = Field(None, max_length=TEXT_MAX)
+
+    @field_validator("entrance_fee", mode="before")
+    @classmethod
+    def _blank_fee_to_none(cls, v):
+        """A blank/whitespace form value means "didn't answer" (None) — not 0/free."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+    @field_validator("entrance_fee", mode="after")
+    @classmethod
+    def _quantize_fee(cls, v: Optional[float]) -> Optional[float]:
+        """Round money to 2 decimal places (cents). Stored as a number; iOS formats it."""
+        if v is None:
+            return v
+        return float(Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 # Fields that live on the create models but never on the persisted review doc.

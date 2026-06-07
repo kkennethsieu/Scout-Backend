@@ -25,7 +25,7 @@ class SpotResponse(BaseModel):
     avg_rating: float
     recent_review_photos: list[RecentReviewPhoto] = []
     mode_access_level: Optional[str] = None
-    mode_entrance_fee: Optional[str] = None
+    avg_entrance_fee: Optional[float] = None
     mode_crowd_level: Optional[str] = None
     best_times: list[str] = []
     best_seasons: list[str] = []

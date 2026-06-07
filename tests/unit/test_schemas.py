@@ -69,6 +69,27 @@ class TestReviewBaseValidation:
         r = ReviewBase(overall_rating=3, permit_required=value)
         assert r.permit_required is value
 
+    def test_entrance_fee_numeric_and_string_coercion(self):
+        """Accepts a number or a numeric string (multipart sends strings)."""
+        assert ReviewBase(overall_rating=3, entrance_fee=12.5).entrance_fee == 12.5
+        assert ReviewBase(overall_rating=3, entrance_fee="12.50").entrance_fee == 12.5
+        # 0 is a real answer (free), distinct from unanswered
+        assert ReviewBase(overall_rating=3, entrance_fee="0").entrance_fee == 0.0
+
+    def test_entrance_fee_blank_is_none(self):
+        """A blank/whitespace form value means 'didn't answer' → None, not an error."""
+        assert ReviewBase(overall_rating=3, entrance_fee="").entrance_fee is None
+        assert ReviewBase(overall_rating=3, entrance_fee="   ").entrance_fee is None
+
+    def test_entrance_fee_quantized_to_2dp(self):
+        r = ReviewBase(overall_rating=3, entrance_fee="12.999")
+        assert r.entrance_fee == 13.0
+
+    @pytest.mark.parametrize("value", [-1, "-0.01"])
+    def test_entrance_fee_rejects_negative(self, value):
+        with pytest.raises(ValidationError):
+            ReviewBase(overall_rating=3, entrance_fee=value)
+
     def test_text_field_length_cap(self):
         ReviewBase(overall_rating=3, notes="x" * 2000)  # ok at limit
         with pytest.raises(ValidationError):
@@ -116,7 +137,7 @@ class TestSpotResponseSchema:
             review_count=5,
             avg_rating=4.2,
             mode_access_level="Easy",
-            mode_entrance_fee="Free",
+            avg_entrance_fee=12.5,
             mode_crowd_level="Light",
             best_times=["GoldenHour", "Sunrise"],
             best_seasons=["Spring", "Fall"],
@@ -160,7 +181,7 @@ class TestReviewResponseSchema:
             best_time_of_day=["Sunrise", "GoldenHour"],
             best_season=["Summer"],
             access_level="Easy",
-            entrance_fee="Free",
+            entrance_fee=12.5,
             crowd_level="Light",
             permit_required=False,
             drone_allowed=None,

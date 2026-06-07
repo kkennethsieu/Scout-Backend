@@ -25,7 +25,7 @@ def _spot_review_form_data(**overrides):
         "best_time_of_day": "Sunrise",
         "best_season": "Summer",
         "access_level": "Easy",
-        "entrance_fee": "Free",
+        "entrance_fee": "12.50",
         "crowd_level": "Empty",
         "permit_required": False,
         "drone_allowed": False,
@@ -62,6 +62,7 @@ class TestSubmitWithNewSpot:
         assert spot["review_count"] == 1
         assert spot["avg_rating"] == 5.0
         assert spot["mode_access_level"] == "Easy"
+        assert spot["avg_entrance_fee"] == 12.5  # "12.50" → 12.5, averaged over 1 review
         assert len(spot["recent_review_photos"]) == 1
 
         # Review fields

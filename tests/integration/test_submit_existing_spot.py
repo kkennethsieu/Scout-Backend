@@ -52,7 +52,7 @@ def _review_form_data(**overrides):
         "best_time_of_day": "Sunrise",
         "best_season": "Summer",
         "access_level": "Easy",
-        "entrance_fee": "Free",
+        "entrance_fee": "12.50",
         "crowd_level": "Light",
         "permit_required": False,
         "drone_allowed": False,
@@ -91,6 +91,7 @@ class TestSubmitExistingSpot:
         assert spot["review_count"] == 1
         assert spot["avg_rating"] == 4.0
         assert spot["mode_access_level"] == "Easy"
+        assert spot["avg_entrance_fee"] == 12.5
         assert len(spot["recent_review_photos"]) == 1
 
     def test_nonexistent_spot_404(self, client, auth_headers):

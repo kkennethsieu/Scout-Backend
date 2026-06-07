@@ -13,7 +13,7 @@ from app.services.aggregates import empty_aggregates, update_or_init_aggregates
 def _make_review(
     rating=4,
     access="Easy",
-    fee="Free",
+    fee=0.0,
     crowd="Light",
     photo_url="https://example.com/photo.jpg",
     created_at=None,
@@ -51,12 +51,14 @@ class TestEmptyAggregates:
         assert agg["review_count"] == 0
         assert agg["avg_rating"] == 0.0
         assert agg["access_level_counts"] == {}
-        assert agg["entrance_fee_counts"] == {}
         assert agg["crowd_level_counts"] == {}
         # Unanswered enum modes start as None (not "")
         assert agg["mode_access_level"] is None
-        assert agg["mode_entrance_fee"] is None
         assert agg["mode_crowd_level"] is None
+        # entrance_fee is a running average, not a mode
+        assert agg["entrance_fee_sum"] == 0.0
+        assert agg["entrance_fee_n"] == 0
+        assert agg["avg_entrance_fee"] is None
         assert agg["recent_review_photos"] == []
         assert agg["best_time_of_day_counts"] == {}
         assert agg["best_times"] == []
@@ -73,6 +75,9 @@ class TestEmptyAggregates:
         # environment is fully removed
         assert "environment_counts" not in agg
         assert "mode_environment" not in agg
+        # entrance_fee mode/counts are gone (replaced by the average)
+        assert "entrance_fee_counts" not in agg
+        assert "mode_entrance_fee" not in agg
 
     def test_returns_fresh_dicts(self):
         """Each call returns a new dict — mutating one doesn't affect the next."""
@@ -89,15 +94,15 @@ class TestUpdateOrInitAggregates:
 
     def test_first_review_on_empty_spot(self):
         spot = {"name": "Test Spot", **empty_aggregates()}
-        review = _make_review(rating=5, access="Moderate", fee="Paid")
+        review = _make_review(rating=5, access="Moderate", fee=20.0)
         result = update_or_init_aggregates(spot, review, "rev-1")
 
         assert result["review_count"] == 1
         assert result["avg_rating"] == 5.0
         assert result["access_level_counts"] == {"Moderate": 1}
-        assert result["entrance_fee_counts"] == {"Paid": 1}
         assert result["mode_access_level"] == "Moderate"
-        assert result["mode_entrance_fee"] == "Paid"
+        assert result["entrance_fee_n"] == 1
+        assert result["avg_entrance_fee"] == 20.0
         assert len(result["recent_review_photos"]) == 1
         assert result["recent_review_photos"][0]["review_id"] == "rev-1"
 
@@ -171,11 +176,39 @@ class TestUpdateOrInitAggregates:
 
     def test_all_mode_fields_updated(self):
         spot = {"name": "Test", **empty_aggregates()}
-        review = _make_review(access="Difficult", fee="Permit", crowd="Crowded")
+        review = _make_review(access="Difficult", fee=15.0, crowd="Crowded")
         result = update_or_init_aggregates(spot, review, "rev-0")
         assert result["mode_access_level"] == "Difficult"
-        assert result["mode_entrance_fee"] == "Permit"
+        assert result["avg_entrance_fee"] == 15.0
         assert result["mode_crowd_level"] == "Crowded"
+
+    def test_entrance_fee_running_average(self):
+        """avg_entrance_fee is the mean of reported fees; 0 (free) counts."""
+        spot = {"name": "Test", **empty_aggregates()}
+        spot = update_or_init_aggregates(spot, _make_review(fee=10.0), "rev-0")
+        spot = update_or_init_aggregates(spot, _make_review(fee=20.0), "rev-1")
+        spot = update_or_init_aggregates(spot, _make_review(fee=0.0), "rev-2")  # free
+        assert spot["entrance_fee_n"] == 3
+        assert spot["entrance_fee_sum"] == 30.0
+        assert spot["avg_entrance_fee"] == 10.0  # (10 + 20 + 0) / 3
+
+    def test_entrance_fee_unanswered_skipped(self):
+        """fee=None is not a data point: it doesn't move the average or the count."""
+        spot = {"name": "Test", **empty_aggregates()}
+        spot = update_or_init_aggregates(spot, _make_review(fee=12.0), "rev-0")
+        assert spot["avg_entrance_fee"] == 12.0
+        assert spot["entrance_fee_n"] == 1
+
+        spot = update_or_init_aggregates(spot, _make_review(fee=None), "rev-1")
+        assert spot["avg_entrance_fee"] == 12.0  # unchanged
+        assert spot["entrance_fee_n"] == 1
+        assert spot["review_count"] == 2  # still counted overall
+
+    def test_entrance_fee_avg_none_when_never_answered(self):
+        spot = {"name": "Test", **empty_aggregates()}
+        spot = update_or_init_aggregates(spot, _make_review(fee=None), "rev-0")
+        assert spot["avg_entrance_fee"] is None
+        assert spot["entrance_fee_n"] == 0
 
     def test_best_times_aggregation_and_sorting(self):
         spot = {"name": "Test", **empty_aggregates()}

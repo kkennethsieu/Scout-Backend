@@ -65,7 +65,8 @@ NOTES_POOL = [
 
 BEST_TIMES = ["Sunrise", "GoldenHour", "BlueHour", "Midday", "Night"]
 ACCESS_LEVELS = ["Easy", "Moderate", "Difficult"]
-ENTRANCE_FEES = ["Free", "Paid", "Permit"]
+# entrance_fee is now a USD number (0 = free). Mostly-free pool for realism.
+ENTRANCE_FEES = [0.0, 0.0, 0.0, 0.0, 10.00, 15.00, 25.00, 35.00]
 CROWD_LEVELS = ["Empty", "Light", "Moderate", "Crowded"]
 SEASONS = ["Spring", "Summer", "Fall", "Winter", "YearRound"]
 
@@ -80,11 +81,12 @@ def empty_aggregates() -> dict:
         "review_count": 0,
         "avg_rating": 0.0,
         "access_level_counts": {},
-        "entrance_fee_counts": {},
         "crowd_level_counts": {},
         "mode_access_level": None,
-        "mode_entrance_fee": None,
         "mode_crowd_level": None,
+        "entrance_fee_sum": 0.0,
+        "entrance_fee_n": 0,
+        "avg_entrance_fee": None,
         "recent_review_photos": [],
         "best_time_of_day_counts": {},
         "best_times": [],
@@ -119,7 +121,7 @@ def update_or_init_aggregates(spot: dict, review: dict, review_id: str) -> dict:
     new_count = old_count + 1
     s["review_count"] = new_count
     s["avg_rating"] = (old_avg * old_count + review["overall_rating"]) / new_count
-    for field in ("access_level", "entrance_fee", "crowd_level"):
+    for field in ("access_level", "crowd_level"):
         v = review.get(field)
         if v is None:
             continue
@@ -128,6 +130,13 @@ def update_or_init_aggregates(spot: dict, review: dict, review_id: str) -> dict:
         counts[v] = counts.get(v, 0) + 1
         s[ck] = counts
         s[f"mode_{field}"] = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+    # entrance_fee running average (money number; 0 counts as free, None skipped)
+    fee = review.get("entrance_fee")
+    if fee is not None:
+        s["entrance_fee_n"] = s.get("entrance_fee_n", 0) + 1
+        s["entrance_fee_sum"] = s.get("entrance_fee_sum", 0.0) + fee
+        s["avg_entrance_fee"] = round(s["entrance_fee_sum"] / s["entrance_fee_n"], 2)
 
     # best_time_of_day + best_season (multi-value) aggregation
     for field, list_key in (("best_time_of_day", "best_times"), ("best_season", "best_seasons")):
@@ -220,7 +229,7 @@ def make_review(spot_id: str, user_uid: str, created_at: datetime):
         "notes": random.choice(NOTES_POOL),
         "best_time_of_day": times,
         "access_level": random.choices(ACCESS_LEVELS, weights=[3, 2, 1])[0],
-        "entrance_fee": random.choices(ENTRANCE_FEES, weights=[4, 1, 1])[0],
+        "entrance_fee": random.choice(ENTRANCE_FEES),
         "crowd_level": random.choices(CROWD_LEVELS, weights=[1, 3, 3, 1])[0],
         "best_season": random.sample(SEASONS, k=random.randint(1, 2)),
         "permit_required": random.choice([True, False]),

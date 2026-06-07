@@ -54,7 +54,7 @@ class TestFullFlow:
             "best_time_of_day": "GoldenHour",
             "best_season": "YearRound",
             "access_level": "Easy",
-            "entrance_fee": "Free",
+            "entrance_fee": "10.00",
             "crowd_level": "Crowded",
             "permit_required": False,
             "drone_allowed": False,
@@ -105,7 +105,7 @@ class TestFullFlow:
             "best_time_of_day": "Night",
             "best_season": "Winter",  # Changed
             "access_level": "Difficult",  # Changed
-            "entrance_fee": "Free",
+            "entrance_fee": "20.00",  # Changed
             "crowd_level": "Crowded",
             "permit_required": False,
             "drone_allowed": False,
@@ -155,6 +155,8 @@ class TestFullFlow:
         assert spot_detail["mode_access_level"] == "Difficult"
         # crowd_level counts: Crowded: 2 → Crowded
         assert spot_detail["mode_crowd_level"] == "Crowded"
+        # entrance_fee average: (10.00 + 20.00) / 2 = 15.0
+        assert spot_detail["avg_entrance_fee"] == 15.0
 
         # Recent photos has 2 entries (newest review photo first)
         assert len(spot_detail["recent_review_photos"]) == 2

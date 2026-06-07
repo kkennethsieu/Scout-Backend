@@ -110,10 +110,12 @@ Reviews are sent as flat **multipart/form-data** (a Pydantic form-model binds th
 - **Required:** `photos` (repeated key, 1–10 JPEGs, ≤10 MB each) and `overall_rating` (1–5).
 - **Everything else is optional.** An omitted field means "the submitter didn't answer" — which is distinct from a negative answer.
 - **Tristate booleans** `permit_required` / `drone_allowed` / `tripod_allowed`: `true` / `false` / omitted (unknown). Spot aggregates surface `null` for a field nobody has answered yet.
+- **`entrance_fee`** is a **USD number** (e.g. `12.50`), not a vocabulary. `0` = free (confirmed); blank/omitted = not answered. Server rounds to 2 decimals. The permit concept lives solely on `permit_required`. Spots expose `avg_entrance_fee` (mean of reported fees).
 - **Constrained vocabularies** (exact capitalized strings — frontend and backend must match):
   - `access_level`: `Easy`, `Moderate`, `Difficult`
-  - `entrance_fee`: `Free`, `Paid`, `Permit`
   - `crowd_level`: `Empty`, `Light`, `Moderate`, `Crowded`
   - `best_time_of_day` (list): `Sunrise`, `GoldenHour`, `BlueHour`, `Midday`, `Night`
   - `best_season` (list): `Spring`, `Summer`, `Fall`, `Winter`, `YearRound`
 - **Text fields** `notes`, `gear_recommendations`, `composition_hints` are capped at 2000 chars.
+
+> **iOS clients:** see [docs/ios-upload-contract.md](docs/ios-upload-contract.md) for the full client-side contract, including the required **HEIC → JPEG** transcode, multipart encoding rules, a Swift `URLSession` reference implementation, and error handling.
