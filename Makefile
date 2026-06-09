@@ -9,6 +9,9 @@ dev:
 seed:
 	.venv/bin/python -m scripts.seed_fake_data
 
+seed_real:
+	.venv/bin/python -m scripts.seed_real_data --project scout --spots 8
+
 test:
 	firebase emulators:exec --project=scout-test \
 	  --only=firestore,auth,storage \

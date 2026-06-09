@@ -26,7 +26,7 @@ async def get_current_user(
 
 @router.get("/users/me/reviews", response_model=PaginatedReviews)
 async def get_my_reviews(
-    limit: int = Query(20, ge=1, le=50),
+    limit: int = Query(10, ge=1, le=25),
     cursor: str | None = Query(None),
     uid: str = Depends(current_uid),
 ):

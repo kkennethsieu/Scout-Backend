@@ -20,20 +20,22 @@ def _make_jpeg(color="red"):
 class TestFullFlow:
     """7-step regression flow test."""
 
-    def test_regression_flow(self, client, auth_with_uid):
+    def test_regression_flow(self, client, auth_headers_for):
         """
         Execute the exact 7-step flow:
         1. Nearby query, no spots → empty
-        2. submit-with-new-spot → returns spot + review
+        2. user A submit-with-new-spot → returns spot + review
         3. Nearby query at same coords → returns the new spot
-        4. submit-existing with different enum values → returns review
+        4. user B submit-existing with different enum values → returns review
+           (a second user, since one user may only review a spot once)
         5. Fetch spot reviews → 2 reviews, newest first
         6. Fetch spot detail → review_count=2, aggregates reflect both,
            recent_review_photos has 2 entries
-        7. Fetch /users/me/reviews for submitting user → both reviews returned,
-           ordering correct
+        7. Fetch /users/me/reviews for user A → only their own review
         """
-        headers = auth_with_uid["headers"]
+        user_a = auth_headers_for(email="user_a@example.com")
+        user_b = auth_headers_for(email="user_b@example.com")
+        headers = user_a["headers"]
 
         # Step 1: Nearby query, no spots → empty
         r1 = client.get(
@@ -77,6 +79,7 @@ class TestFullFlow:
         spot_id = spot["id"]
         review1 = body2["review"]
         review1_id = review1["id"]
+        assert review1["spot_name"] == "Griffith Observatory"
 
         assert spot["name"] == "Griffith Observatory"
         assert spot["city"] == "Los Angeles"  # Geocoding mock
@@ -117,7 +120,7 @@ class TestFullFlow:
             "/spots/{}/reviews".format(spot_id),
             data=form_data_2,
             files=[("photos", _make_jpeg("green"))],
-            headers=headers,
+            headers=user_b["headers"],
         )
         assert r4.status_code == 201
         review2 = r4.json()
@@ -163,15 +166,14 @@ class TestFullFlow:
         assert spot_detail["recent_review_photos"][0]["review_id"] == review2_id
         assert spot_detail["recent_review_photos"][1]["review_id"] == review1_id
 
-        # Step 7: Fetch /users/me/reviews for submitting user → both reviews returned,
-        # ordering correct
+        # Step 7: Fetch /users/me/reviews for user A → only their own review
+        # (review2 belongs to user B, so it must not appear here)
         r7 = client.get(
             "/users/me/reviews",
             headers=headers,
         )
         assert r7.status_code == 200
         user_reviews = r7.json()
-        assert len(user_reviews["items"]) == 2
-        # Newest first
-        assert user_reviews["items"][0]["id"] == review2_id
-        assert user_reviews["items"][1]["id"] == review1_id
+        assert len(user_reviews["items"]) == 1
+        assert user_reviews["items"][0]["id"] == review1_id
+        assert review2_id not in [item["id"] for item in user_reviews["items"]]

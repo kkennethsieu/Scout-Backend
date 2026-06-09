@@ -374,6 +374,7 @@ def main() -> None:
 
             review_doc = {
                 "spot_id": spot_id,
+                "spot_name": spot_cfg["name"],
                 "user_id": author["uid"],
                 "photo_urls": r_cfg["photo_urls"],
                 "overall_rating": r_cfg["rating"],

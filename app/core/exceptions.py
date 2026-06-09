@@ -79,6 +79,19 @@ class InternalError(DomainError):
         super().__init__(500, "INTERNAL_ERROR", "Internal server error")
 
 
+class ReviewAlreadyExists(DomainError):
+    def __init__(self, spot_id: str, review_id: str):
+        super().__init__(
+            status=409,
+            code="REVIEW_ALREADY_EXISTS",
+            detail="You have already reviewed this spot.",
+            payload={
+                "spot_id": spot_id,
+                "review_id": review_id,
+            },
+        )
+
+
 class SpotAlreadyExists(DomainError):
     def __init__(self, spot_id: str, name: str, distance_m: float):
         super().__init__(

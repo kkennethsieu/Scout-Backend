@@ -99,9 +99,11 @@ make lint
 ---
 
 ## Error Codes
-`SPOT_NOT_FOUND`, `REVIEW_NOT_FOUND`, `USER_NOT_FOUND`, `SPOT_ALREADY_EXISTS`, `PHOTO_INVALID_FORMAT`, `PHOTO_TOO_LARGE`, `PHOTO_COUNT_INVALID`, `INVALID_ENUM_VALUE`, `INVALID_CURSOR`, `GEOCODING_FAILED`, `INVALID_TOKEN`, `MISSING_TOKEN`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`.
+`SPOT_NOT_FOUND`, `REVIEW_NOT_FOUND`, `USER_NOT_FOUND`, `SPOT_ALREADY_EXISTS`, `REVIEW_ALREADY_EXISTS`, `PHOTO_INVALID_FORMAT`, `PHOTO_TOO_LARGE`, `PHOTO_COUNT_INVALID`, `INVALID_ENUM_VALUE`, `INVALID_CURSOR`, `GEOCODING_FAILED`, `INVALID_TOKEN`, `MISSING_TOKEN`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`.
 
 `SPOT_ALREADY_EXISTS` (409) carries extra fields beyond `{detail, code}`: `spot_id`, `name`, `distance_m` — so the client can deep-link to the existing spot.
+
+`REVIEW_ALREADY_EXISTS` (409) is returned by `POST /spots/{id}/reviews` when the current user has already reviewed that spot (one review per user per spot). It carries `spot_id` and `review_id` so the client can deep-link to the existing review.
 
 ## Review Submission Contract
 

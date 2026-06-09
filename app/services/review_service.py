@@ -10,6 +10,7 @@ from google.api_core.exceptions import GoogleAPICallError
 from app.core.exceptions import (
     InternalError,
     InvalidCursor,
+    ReviewAlreadyExists,
     ReviewNotFound,
     SpotAlreadyExists,
     SpotNotFound,
@@ -78,12 +79,12 @@ async def get_reviews_for_spot(spot_id: str, limit: int = 20, cursor: str | None
     return {"items": items, "limit": limit, "next_cursor": next_cursor}
 
 
-async def get_reviews_for_user(user_id: str, limit: int = 20, cursor: str | None = None) -> dict:
+async def get_reviews_for_user(user_id: str, limit: int = 10, cursor: str | None = None) -> dict:
     """
     Paginated reviews for a user, newest first.
     Uses composite index (user_id ASC, created_at DESC).
     """
-    limit = min(limit, 50)  # hard cap
+    limit = min(limit, 30)  # hard cap
 
     query = (
         db.collection("reviews")
@@ -115,6 +116,22 @@ async def get_reviews_for_user(user_id: str, limit: int = 20, cursor: str | None
     return {"items": items, "limit": limit, "next_cursor": next_cursor}
 
 
+def _existing_review_id(spot_id: str, uid: str, txn=None) -> str | None:
+    """Return the id of this user's existing review for the spot, or None.
+
+    Enforces one-review-per-user-per-spot. The two equality filters are served
+    by Firestore's automatic single-field indexes (no composite index needed).
+    """
+    query = (
+        db.collection("reviews")
+        .where("spot_id", "==", spot_id)
+        .where("user_id", "==", uid)
+        .limit(1)
+    )
+    docs = list(query.get(transaction=txn) if txn is not None else query.get())
+    return docs[0].id if docs else None
+
+
 async def submit_review(
     spot_id: str,
     data: ReviewCreate,
@@ -140,6 +157,13 @@ async def submit_review(
     spot_snap = spot_ref.get()
     if not spot_snap.exists:
         raise SpotNotFound()
+    spot_name = spot_snap.to_dict()["name"]
+
+    # 2b. One review per user per spot — fast fail before wasting a photo upload.
+    #     The transaction below re-checks to close the concurrent-submit race.
+    existing_id = _existing_review_id(spot_id, uid)
+    if existing_id is not None:
+        raise ReviewAlreadyExists(spot_id=spot_id, review_id=existing_id)
 
     # 3. Upload photos
     review_id = str(uuid4())
@@ -150,6 +174,7 @@ async def submit_review(
     review_dict = {
         **data.model_dump(exclude=_CREATE_ONLY_FIELDS),
         "spot_id": spot_id,
+        "spot_name": spot_name,
         "user_id": uid,
         "photo_urls": photo_urls,
         "created_at": now,
@@ -166,6 +191,11 @@ async def submit_review(
             if spot_data is None:
                 raise SpotNotFound()
 
+            # Re-check one-review-per-user inside the txn to close the race window
+            existing_id = _existing_review_id(spot_id, uid, txn=txn)
+            if existing_id is not None:
+                raise ReviewAlreadyExists(spot_id=spot_id, review_id=existing_id)
+
             # Update aggregates
             updated_spot = update_or_init_aggregates(spot_data, review_dict, review_id)
 
@@ -174,7 +204,7 @@ async def submit_review(
             txn.set(spot_ref, updated_spot)
 
         _submit_in_txn(transaction)
-    except SpotNotFound:
+    except (SpotNotFound, ReviewAlreadyExists):
         await cleanup(photo_paths)
         raise
     except GoogleAPICallError as e:
@@ -186,7 +216,7 @@ async def submit_review(
         await cleanup(photo_paths)
         raise InternalError()
 
-    return {**review_dict, "id": review_id}
+    return {**review_dict, "id": review_id, "spot_id": spot_id}
 
 
 async def submit_with_new_spot(
@@ -224,6 +254,7 @@ async def submit_with_new_spot(
     review_dict = {
         **data.model_dump(exclude=_CREATE_ONLY_FIELDS | _SPOT_ONLY_FIELDS),
         "spot_id": spot_id,
+        "spot_name": data.name,
         "user_id": uid,
         "photo_urls": photo_urls,
         "created_at": now,

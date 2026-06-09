@@ -80,6 +80,7 @@ class TestSubmitExistingSpot:
         assert r.status_code == 201
         body = r.json()
         assert body["spot_id"] == spot_id
+        assert body["spot_name"] == "Test Spot"
         assert body["overall_rating"] == 4
         assert body["access_level"] == "Easy"
         assert len(body["photo_urls"]) == 1
@@ -171,6 +172,60 @@ class TestSubmitExistingSpot:
         )
         assert r.status_code == 201
         assert len(r.json()["photo_urls"]) == 3
+
+    def test_duplicate_review_same_user_409(self, client, auth_headers):
+        """A user who already reviewed a spot → 409 REVIEW_ALREADY_EXISTS."""
+        spot_id = _seed_spot()
+
+        first = client.post(
+            f"/spots/{spot_id}/reviews",
+            data=_review_form_data(),
+            files=[("photos", _make_jpeg())],
+            headers=auth_headers,
+        )
+        assert first.status_code == 201
+        first_review_id = first.json()["id"]
+
+        second = client.post(
+            f"/spots/{spot_id}/reviews",
+            data=_review_form_data(),
+            files=[("photos", _make_jpeg())],
+            headers=auth_headers,
+        )
+        assert second.status_code == 409
+        body = second.json()
+        assert body["code"] == "REVIEW_ALREADY_EXISTS"
+        assert body["spot_id"] == spot_id
+        assert body["review_id"] == first_review_id
+
+        # Aggregates unchanged — still a single review
+        spot = client.get(f"/spots/{spot_id}", headers=auth_headers).json()
+        assert spot["review_count"] == 1
+
+    def test_different_user_can_review_same_spot(self, client, auth_headers_for):
+        """A second, distinct user may review a spot the first already reviewed."""
+        spot_id = _seed_spot()
+        user_a = auth_headers_for(email="user_a@example.com")
+        user_b = auth_headers_for(email="user_b@example.com")
+
+        r1 = client.post(
+            f"/spots/{spot_id}/reviews",
+            data=_review_form_data(),
+            files=[("photos", _make_jpeg())],
+            headers=user_a["headers"],
+        )
+        assert r1.status_code == 201
+
+        r2 = client.post(
+            f"/spots/{spot_id}/reviews",
+            data=_review_form_data(),
+            files=[("photos", _make_jpeg())],
+            headers=user_b["headers"],
+        )
+        assert r2.status_code == 201
+
+        spot = client.get(f"/spots/{spot_id}", headers=user_a["headers"]).json()
+        assert spot["review_count"] == 2
 
     def test_multiple_best_time_of_day(self, client, auth_headers):
         """Multiple best_time_of_day values (repeated key)."""

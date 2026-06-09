@@ -216,13 +216,14 @@ COMP_POOL = [
 ]
 
 
-def make_review(spot_id: str, user_uid: str, created_at: datetime):
+def make_review(spot_id: str, spot_name: str, user_uid: str, created_at: datetime):
     review_id = str(uuid4())
     photo_count = random.randint(1, 3)
     photo_urls = [f"https://picsum.photos/seed/{review_id}-{i}/800/600" for i in range(photo_count)]
     times = random.sample(BEST_TIMES, k=random.randint(1, 2))
     return review_id, {
         "spot_id": spot_id,
+        "spot_name": spot_name,
         "user_id": user_uid,
         "photo_urls": photo_urls,
         "overall_rating": random.choices([3, 4, 5], weights=[1, 3, 2])[0],
@@ -341,7 +342,7 @@ def main():
         for offset_days in review_offsets:
             created_at = spot_created + timedelta(days=offset_days)
             author = random.choice(users)
-            review_id, review = make_review(spot_id, author["uid"], created_at)
+            review_id, review = make_review(spot_id, name, author["uid"], created_at)
             reviews.append((review_id, review))
             spot_doc = update_or_init_aggregates(spot_doc, review, review_id)
 

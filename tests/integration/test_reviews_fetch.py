@@ -36,6 +36,7 @@ def _seed_review_direct(spot_id, review_id, user_id, rating=4, created_at=None):
     now = created_at or datetime.now(timezone.utc)
     review_data = {
         "spot_id": spot_id,
+        "spot_name": "Test Spot",
         "user_id": user_id,
         "photo_urls": ["https://example.com/photo.jpg"],
         "overall_rating": rating,
@@ -99,6 +100,7 @@ class TestReviewsFetch:
         body = r.json()
         assert body["id"] == review_id
         assert body["spot_id"] == spot_id
+        assert body["spot_name"] == "Test Spot"
         assert body["user_id"] == auth_with_uid["uid"]
 
     def test_single_review_nonexistent(self, client, auth_headers):
