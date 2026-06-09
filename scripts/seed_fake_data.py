@@ -332,20 +332,8 @@ def main() -> None:
 
     now = datetime.now(timezone.utc)
 
-    # 2. Write user docs in Firestore
-    user_batch = db.batch()
-    for u in users:
-        user_batch.set(
-            db.collection("users").document(u["uid"]),
-            {
-                "uid": u["uid"],
-                "email": u["email"],
-                "display_name": u["display_name"],
-                "photo_url": None,
-                "created_at": now,
-            },
-        )
-    user_batch.commit()
+    # 2. User docs are written after reviews so review_count is known.
+    review_counts: dict[str, int] = {u["uid"]: 0 for u in users}
 
     # 3. For each high-fidelity spot: seed reviews, replay aggregates, batch write
     total_reviews = 0
@@ -392,6 +380,7 @@ def main() -> None:
                 "created_at": created_at,
             }
             reviews_to_write.append((review_id, review_doc))
+            review_counts[author["uid"]] += 1
             spot_doc = update_or_init_aggregates(spot_doc, review_doc, review_id)
 
         # Batch write spot and reviews
@@ -404,7 +393,23 @@ def main() -> None:
 
     print(f"[seed] Wrote {len(HIGH_FIDELITY_SPOTS)} high-fidelity spots, {total_reviews} reviews.")
 
-    # 4. Summary output
+    # 4. Write user docs now that review_count is known
+    user_batch = db.batch()
+    for u in users:
+        user_batch.set(
+            db.collection("users").document(u["uid"]),
+            {
+                "uid": u["uid"],
+                "email": u["email"],
+                "display_name": u["display_name"],
+                "photo_url": None,
+                "created_at": now,
+                "review_count": review_counts[u["uid"]],
+            },
+        )
+    user_batch.commit()
+
+    # 5. Summary output
     print("\n=== Seed summary ===")
     print("Users (use one of these tokens as `Authorization: Bearer <idToken>`):")
     for u in users:

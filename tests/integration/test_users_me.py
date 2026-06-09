@@ -36,6 +36,12 @@ class TestUsersMe:
         # The important thing is the endpoint doesn't crash.
         assert "display_name" in body
 
+    def test_review_count_defaults_zero(self, client, auth_with_uid):
+        """A brand-new user has review_count 0."""
+        r = client.get("/users/me", headers=auth_with_uid["headers"])
+        assert r.status_code == 200
+        assert r.json()["review_count"] == 0
+
     def test_requires_auth(self, client):
         """Missing auth → 401."""
         r = client.get("/users/me")

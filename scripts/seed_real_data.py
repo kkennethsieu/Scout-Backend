@@ -297,20 +297,8 @@ def main():
         users.append({"uid": uid, "email": email, "display_name": display})
     print(f"[seed] Created/found {len(users)} users in Firebase Auth.")
 
-    # ---- 2. Write user docs ----
-    user_batch = db.batch()
-    for u in users:
-        user_batch.set(
-            db.collection("users").document(u["uid"]),
-            {
-                "uid": u["uid"],
-                "email": u["email"],
-                "display_name": u["display_name"],
-                "photo_url": None,
-                "created_at": now,
-            },
-        )
-    user_batch.commit()
+    # ---- 2. Write user docs (review_count filled in after reviews are generated) ----
+    review_counts: dict[str, int] = {u["uid"]: 0 for u in users}
 
     # ---- 3. Generate spots and reviews ----
     spot_ids = []
@@ -344,6 +332,7 @@ def main():
             author = random.choice(users)
             review_id, review = make_review(spot_id, name, author["uid"], created_at)
             reviews.append((review_id, review))
+            review_counts[author["uid"]] += 1
             spot_doc = update_or_init_aggregates(spot_doc, review, review_id)
 
         batch = db.batch()
@@ -352,6 +341,22 @@ def main():
             batch.set(db.collection("reviews").document(rid), review)
         batch.commit()
         total_reviews += len(reviews)
+
+    # ---- 4. Write user docs now that review_count is known ----
+    user_batch = db.batch()
+    for u in users:
+        user_batch.set(
+            db.collection("users").document(u["uid"]),
+            {
+                "uid": u["uid"],
+                "email": u["email"],
+                "display_name": u["display_name"],
+                "photo_url": None,
+                "created_at": now,
+                "review_count": review_counts[u["uid"]],
+            },
+        )
+    user_batch.commit()
 
     print(f"[seed] Wrote {args.spots} spots, {total_reviews} reviews to {args.project}.")
 

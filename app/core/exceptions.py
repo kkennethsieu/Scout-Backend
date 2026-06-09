@@ -79,6 +79,11 @@ class InternalError(DomainError):
         super().__init__(500, "INTERNAL_ERROR", "Internal server error")
 
 
+class Forbidden(DomainError):
+    def __init__(self, detail: str = "You do not have permission to perform this action"):
+        super().__init__(403, "FORBIDDEN", detail)
+
+
 class ReviewAlreadyExists(DomainError):
     def __init__(self, spot_id: str, review_id: str):
         super().__init__(

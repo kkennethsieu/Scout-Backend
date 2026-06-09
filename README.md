@@ -94,16 +94,21 @@ make lint
 | **POST** | `/spots/{id}/reviews` | ✓ | Submit a new review for an existing spot (multipart JPEG, 1–10 photos) |
 | **POST** | `/spots/with-review` | ✓ | Submit a brand new spot and its first review atomically (409 if a spot already exists within 50 m) |
 | **GET** | `/reviews/{id}` | ✓ | Retrieve detailed info for a single review |
+| **DELETE** | `/reviews/{id}` | ✓ | Delete the caller's own review; reverses spot aggregates (deletes the spot if it was its last review). 403 if not the author |
 | **GET** | `/users/me/reviews` | ✓ | Fetch the current user's submitted reviews paginated |
 
 ---
 
 ## Error Codes
-`SPOT_NOT_FOUND`, `REVIEW_NOT_FOUND`, `USER_NOT_FOUND`, `SPOT_ALREADY_EXISTS`, `REVIEW_ALREADY_EXISTS`, `PHOTO_INVALID_FORMAT`, `PHOTO_TOO_LARGE`, `PHOTO_COUNT_INVALID`, `INVALID_ENUM_VALUE`, `INVALID_CURSOR`, `GEOCODING_FAILED`, `INVALID_TOKEN`, `MISSING_TOKEN`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`.
+`SPOT_NOT_FOUND`, `REVIEW_NOT_FOUND`, `USER_NOT_FOUND`, `SPOT_ALREADY_EXISTS`, `REVIEW_ALREADY_EXISTS`, `FORBIDDEN`, `PHOTO_INVALID_FORMAT`, `PHOTO_TOO_LARGE`, `PHOTO_COUNT_INVALID`, `INVALID_ENUM_VALUE`, `INVALID_CURSOR`, `GEOCODING_FAILED`, `INVALID_TOKEN`, `MISSING_TOKEN`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`.
 
 `SPOT_ALREADY_EXISTS` (409) carries extra fields beyond `{detail, code}`: `spot_id`, `name`, `distance_m` — so the client can deep-link to the existing spot.
 
 `REVIEW_ALREADY_EXISTS` (409) is returned by `POST /spots/{id}/reviews` when the current user has already reviewed that spot (one review per user per spot). It carries `spot_id` and `review_id` so the client can deep-link to the existing review.
+
+`FORBIDDEN` (403) is returned by `DELETE /reviews/{id}` when the caller is not the review's author.
+
+`GET /users/me` returns a `review_count` field — the user's number of reviews, maintained atomically as reviews are created and deleted (no per-request count query needed).
 
 ## Review Submission Contract
 

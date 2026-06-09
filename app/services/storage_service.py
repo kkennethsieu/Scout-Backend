@@ -86,6 +86,23 @@ def _strip_exif(data: bytes) -> bytes:
     return out.getvalue()
 
 
+async def delete_review_blobs(review_id: str):
+    """Best-effort delete of every photo stored under a review's prefix.
+
+    Used when a review is deleted. Deletes by prefix (reviews/{id}/) so it
+    doesn't depend on parsing stored URLs back into object paths.
+    """
+
+    def _delete_prefix_sync(prefix: str):
+        for blob in bucket.list_blobs(prefix=prefix):
+            blob.delete()
+
+    try:
+        await asyncio.to_thread(_delete_prefix_sync, f"reviews/{review_id}/")
+    except Exception as e:
+        log.warning("review blob cleanup failed", extra={"review_id": review_id, "error": str(e)})
+
+
 async def cleanup(paths: list[str]):
     """
     Best-effort delete of storage objects.

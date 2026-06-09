@@ -8,6 +8,7 @@ from firebase_admin import firestore
 from google.api_core.exceptions import GoogleAPICallError
 
 from app.core.exceptions import (
+    Forbidden,
     InternalError,
     InvalidCursor,
     ReviewAlreadyExists,
@@ -25,7 +26,12 @@ from app.schemas.review import (
 )
 from app.services.aggregates import empty_aggregates, update_or_init_aggregates
 from app.services.geo import bounding_box, haversine_km
-from app.services.storage_service import cleanup, upload_photos, validate_photo_count
+from app.services.storage_service import (
+    cleanup,
+    delete_review_blobs,
+    upload_photos,
+    validate_photo_count,
+)
 
 log = logging.getLogger(__name__)
 
@@ -199,9 +205,14 @@ async def submit_review(
             # Update aggregates
             updated_spot = update_or_init_aggregates(spot_data, review_dict, review_id)
 
-            # Write both
+            # Write review + spot, and bump the author's denormalized review_count
             txn.set(review_ref, review_dict)
             txn.set(spot_ref, updated_spot)
+            txn.set(
+                db.collection("users").document(uid),
+                {"review_count": firestore.Increment(1)},
+                merge=True,
+            )
 
         _submit_in_txn(transaction)
     except (SpotNotFound, ReviewAlreadyExists):
@@ -303,9 +314,14 @@ async def submit_with_new_spot(
                         distance_m=d * 1000.0,
                     )
 
-            # Perform atomic writes
+            # Perform atomic writes + bump the author's denormalized review_count
             txn.set(spot_ref, spot_dict)
             txn.set(review_ref, review_dict)
+            txn.set(
+                db.collection("users").document(uid),
+                {"review_count": firestore.Increment(1)},
+                merge=True,
+            )
 
         _submit_in_txn(transaction)
     except SpotAlreadyExists:
@@ -324,3 +340,92 @@ async def submit_with_new_spot(
     review_dict["id"] = review_id
 
     return {"spot": spot_dict, "review": review_dict}
+
+
+# Spot identity fields carried across an aggregate rebuild (everything that
+# isn't a derived aggregate).
+_SPOT_IDENTITY_FIELDS = (
+    "name",
+    "public_lat",
+    "public_lng",
+    "city",
+    "admin_area",
+    "country",
+    "created_at",
+)
+
+
+async def delete_review(review_id: str, uid: str) -> None:
+    """
+    Delete a review (author only) and reverse its effect on the spot.
+
+    Flow:
+    1. Load the review → 404 if missing, 403 if not the author.
+    2. TRANSACTION: delete the review, decrement the author's review_count, and
+       rebuild the spot's aggregates from the *remaining* reviews. Mode fields
+       and the recency-capped lists (recent_review_photos, gear/comp tips) aren't
+       reversible incrementally, so we recompute from scratch by replaying the
+       survivors in chronological order — the exact order they were added.
+       If it was the spot's only review, the now-empty spot is deleted too.
+    3. After commit → best-effort delete of the review's photos from Storage.
+    """
+    review_ref = db.collection("reviews").document(review_id)
+    snap = review_ref.get()
+    if not snap.exists:
+        raise ReviewNotFound()
+    review = snap.to_dict()
+    if review.get("user_id") != uid:
+        raise Forbidden("You can only delete your own review")
+
+    spot_id = review["spot_id"]
+    spot_ref = db.collection("spots").document(spot_id)
+    transaction = db.transaction()
+
+    try:
+
+        @firestore.transactional
+        def _delete_in_txn(txn):
+            # --- reads first (Firestore requires all reads before writes) ---
+            spot_snap = spot_ref.get(transaction=txn)
+            remaining = [
+                (d.id, d.to_dict())
+                for d in db.collection("reviews")
+                .where("spot_id", "==", spot_id)
+                .get(transaction=txn)
+                if d.id != review_id
+            ]
+            remaining.sort(key=lambda kv: kv[1]["created_at"])
+
+            # --- writes ---
+            txn.delete(review_ref)
+            txn.set(
+                db.collection("users").document(uid),
+                {"review_count": firestore.Increment(-1)},
+                merge=True,
+            )
+
+            if not remaining:
+                # Last review removed → the spot has no content; remove it.
+                if spot_snap.exists:
+                    txn.delete(spot_ref)
+                return
+
+            spot_data = spot_snap.to_dict() or {}
+            rebuilt = {
+                **{k: spot_data.get(k) for k in _SPOT_IDENTITY_FIELDS},
+                **empty_aggregates(),
+            }
+            for rid, rdoc in remaining:
+                rebuilt = update_or_init_aggregates(rebuilt, rdoc, rid)
+            txn.set(spot_ref, rebuilt)
+
+        _delete_in_txn(transaction)
+    except GoogleAPICallError as e:
+        log.error("Delete transaction failed: %s", str(e))
+        raise UpstreamUnavailable()
+    except Exception as e:
+        log.error("Delete transaction failed: %s", str(e))
+        raise InternalError()
+
+    # Photos can't be removed inside a Firestore txn — clean them up post-commit.
+    await delete_review_blobs(review_id)
