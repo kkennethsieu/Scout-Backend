@@ -363,6 +363,10 @@ def main() -> None:
             review_doc = {
                 "spot_id": spot_id,
                 "spot_name": spot_cfg["name"],
+                "public_lat": spot_cfg["lat"],
+                "public_lng": spot_cfg["lng"],
+                "city": spot_cfg["city"],
+                "admin_area": spot_cfg["admin_area"],
                 "user_id": author["uid"],
                 "photo_urls": r_cfg["photo_urls"],
                 "overall_rating": r_cfg["rating"],
@@ -399,7 +403,7 @@ def main() -> None:
         user_batch.set(
             db.collection("users").document(u["uid"]),
             {
-                "uid": u["uid"],
+                "id": u["uid"],
                 "email": u["email"],
                 "display_name": u["display_name"],
                 "photo_url": None,

@@ -37,6 +37,10 @@ def _seed_review_direct(spot_id, review_id, user_id, rating=4, created_at=None):
     review_data = {
         "spot_id": spot_id,
         "spot_name": "Test Spot",
+        "public_lat": 34.0522,
+        "public_lng": -118.2437,
+        "city": "Los Angeles",
+        "admin_area": "California",
         "user_id": user_id,
         "photo_urls": ["https://example.com/photo.jpg"],
         "overall_rating": rating,
@@ -101,6 +105,10 @@ class TestReviewsFetch:
         assert body["id"] == review_id
         assert body["spot_id"] == spot_id
         assert body["spot_name"] == "Test Spot"
+        assert body["public_lat"] == 34.0522
+        assert body["public_lng"] == -118.2437
+        assert body["city"] == "Los Angeles"
+        assert body["admin_area"] == "California"
         assert body["user_id"] == auth_with_uid["uid"]
 
     def test_single_review_nonexistent(self, client, auth_headers):

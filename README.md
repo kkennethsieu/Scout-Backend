@@ -109,6 +109,8 @@ make lint
 
 `FORBIDDEN` (403) is returned by `DELETE /reviews/{id}` when the caller is not the review's author.
 
+A fetched review (`GET /reviews/{id}`, feeds, and the `with-review` response) carries its spot's location denormalized at create time — `spot_name`, `public_lat`, `public_lng`, `city`, `admin_area` — so the client can render/map a review without a second spot lookup. These are always present on every review.
+
 `GET /users/me` returns a `review_count` field — the user's number of reviews, maintained atomically as reviews are created and deleted (no per-request count query needed). It also returns `home_city` / `home_country` (where the user is from), `null` until set via `PATCH /users/me`.
 
 ## Review Submission Contract

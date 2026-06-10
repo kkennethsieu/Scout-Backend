@@ -9,7 +9,7 @@ class TestUsersMe:
         r = client.get("/users/me", headers=auth_with_uid["headers"])
         assert r.status_code == 200
         body = r.json()
-        assert body["uid"] == auth_with_uid["uid"]
+        assert body["id"] == auth_with_uid["uid"]
         assert body["email"] == "test@example.com"
         assert "created_at" in body
 
@@ -22,7 +22,7 @@ class TestUsersMe:
 
         r2 = client.get("/users/me", headers=headers)
         assert r2.status_code == 200
-        assert r1.json()["uid"] == r2.json()["uid"]
+        assert r1.json()["id"] == r2.json()["id"]
         assert r1.json()["created_at"] == r2.json()["created_at"]
 
     def test_doc_fields_match_claims(self, client, auth_headers_for):

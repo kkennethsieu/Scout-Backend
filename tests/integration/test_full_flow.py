@@ -80,6 +80,11 @@ class TestFullFlow:
         review1 = body2["review"]
         review1_id = review1["id"]
         assert review1["spot_name"] == "Griffith Observatory"
+        # Denormalized location: coords from the request, city/admin_area from geocoding.
+        assert review1["public_lat"] == 34.1184
+        assert review1["public_lng"] == -118.3004
+        assert review1["city"] == "Los Angeles"  # Geocoding mock
+        assert review1["admin_area"] == spot["admin_area"]
 
         assert spot["name"] == "Griffith Observatory"
         assert spot["city"] == "Los Angeles"  # Geocoding mock

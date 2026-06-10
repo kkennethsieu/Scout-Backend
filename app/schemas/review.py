@@ -91,8 +91,13 @@ class ReviewResponse(ReviewBase):
     id: str
     spot_id: str
     # Denormalized from the spot at create time so a fetched review carries its
-    # spot's name without a second lookup. Optional for legacy docs predating it.
-    spot_name: Optional[str] = None
+    # spot's name + location without a second lookup. Always populated on write
+    # (both submit paths and the seeds set them), so they're required here.
+    spot_name: str
+    public_lat: float
+    public_lng: float
+    city: str
+    admin_area: str
     user_id: str
     photo_urls: list[str] = Field(..., min_length=1, max_length=10)
     created_at: datetime

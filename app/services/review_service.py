@@ -163,7 +163,8 @@ async def submit_review(
     spot_snap = spot_ref.get()
     if not spot_snap.exists:
         raise SpotNotFound()
-    spot_name = spot_snap.to_dict()["name"]
+    spot_data = spot_snap.to_dict()
+    spot_name = spot_data["name"]
 
     # 2b. One review per user per spot — fast fail before wasting a photo upload.
     #     The transaction below re-checks to close the concurrent-submit race.
@@ -181,6 +182,10 @@ async def submit_review(
         **data.model_dump(exclude=_CREATE_ONLY_FIELDS),
         "spot_id": spot_id,
         "spot_name": spot_name,
+        "public_lat": spot_data["public_lat"],
+        "public_lng": spot_data["public_lng"],
+        "city": spot_data["city"],
+        "admin_area": spot_data["admin_area"],
         "user_id": uid,
         "photo_urls": photo_urls,
         "created_at": now,
@@ -266,6 +271,10 @@ async def submit_with_new_spot(
         **data.model_dump(exclude=_CREATE_ONLY_FIELDS | _SPOT_ONLY_FIELDS),
         "spot_id": spot_id,
         "spot_name": data.name,
+        "public_lat": lat,
+        "public_lng": lng,
+        "city": geo_data["city"],
+        "admin_area": geo_data["admin_area"],
         "user_id": uid,
         "photo_urls": photo_urls,
         "created_at": now,

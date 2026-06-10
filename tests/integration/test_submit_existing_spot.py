@@ -81,6 +81,10 @@ class TestSubmitExistingSpot:
         body = r.json()
         assert body["spot_id"] == spot_id
         assert body["spot_name"] == "Test Spot"
+        assert body["public_lat"] == 34.0522
+        assert body["public_lng"] == -118.2437
+        assert body["city"] == "Los Angeles"
+        assert body["admin_area"] == "California"
         assert body["overall_rating"] == 4
         assert body["access_level"] == "Easy"
         assert len(body["photo_urls"]) == 1

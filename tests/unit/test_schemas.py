@@ -104,17 +104,17 @@ class TestReviewBaseValidation:
 class TestUserResponseSchema:
     def test_valid_user(self):
         user = UserResponse(
-            uid="abc123",
+            id="abc123",
             email="test@example.com",
             display_name="Test User",
             photo_url="https://example.com/photo.jpg",
             created_at=datetime.now(timezone.utc),
         )
-        assert user.uid == "abc123"
+        assert user.id == "abc123"
 
     def test_null_photo_url(self):
         user = UserResponse(
-            uid="abc123",
+            id="abc123",
             email="test@example.com",
             display_name="Test User",
             photo_url=None,
@@ -174,6 +174,11 @@ class TestReviewResponseSchema:
         review = ReviewResponse(
             id="rev-1",
             spot_id="spot-1",
+            spot_name="Test Spot",
+            public_lat=34.0522,
+            public_lng=-118.2437,
+            city="Los Angeles",
+            admin_area="California",
             user_id="user-1",
             photo_urls=["https://example.com/photo.jpg"],
             overall_rating=4,
