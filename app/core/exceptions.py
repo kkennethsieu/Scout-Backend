@@ -59,6 +59,15 @@ class GeocodingFailed(DomainError):
         super().__init__(503, "GEOCODING_FAILED", detail)
 
 
+class GeocodingNoLocation(DomainError):
+    def __init__(self):
+        super().__init__(
+            422,
+            "GEOCODING_NO_LOCATION",
+            "Could not resolve a city/country for this location.",
+        )
+
+
 class MissingToken(DomainError):
     def __init__(self):
         super().__init__(401, "MISSING_TOKEN", "Authorization header missing or malformed")

@@ -331,6 +331,7 @@ user-facing messaging:
 | 404  | `SPOT_NOT_FOUND`                            | `spot_id` doesn't exist (existing-spot route)           | —                                                                         |
 | 409  | `SPOT_ALREADY_EXISTS`                       | New spot within 50 m of an existing one                 | Deep-link to existing spot — body carries `spot_id`, `name`, `distance_m` |
 | 422  | —                                           | Required field missing / malformed (FastAPI validation) | Fix the payload                                                           |
+| 422  | `GEOCODING_NO_LOCATION`                     | Coordinate has no resolvable city/country (ocean, remote wilderness) | **Don't retry** — ask the user to pick a different/more precise location  |
 | 503  | `GEOCODING_FAILED` / `UPSTREAM_UNAVAILABLE` | Backend dependency unavailable                          | Retry with backoff                                                        |
 
 > **`SPOT_ALREADY_EXISTS` is expected, not exceptional.** When the user tries to

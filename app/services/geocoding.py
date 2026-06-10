@@ -7,7 +7,7 @@ city/admin_area/country from lat/lng.
 import httpx
 
 from app.core.config import settings
-from app.core.exceptions import GeocodingFailed
+from app.core.exceptions import GeocodingFailed, GeocodingNoLocation
 
 
 async def reverse(lat: float, lng: float) -> dict:
@@ -26,7 +26,13 @@ async def reverse(lat: float, lng: float) -> dict:
         body = r.json()
         if body.get("status") != "OK":
             raise GeocodingFailed(body.get("status", "unknown"))
-        return _parse_components(body)
+        components = _parse_components(body)
+        # A coordinate with no resolvable city/country (ocean, remote wilderness)
+        # isn't a transient failure — reject it as non-retryable rather than
+        # persisting a spot with blank location fields.
+        if not components["city"] or not components["country"]:
+            raise GeocodingNoLocation()
+        return components
 
 
 def _parse_components(body: dict) -> dict:

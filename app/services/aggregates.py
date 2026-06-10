@@ -72,7 +72,7 @@ def update_or_init_aggregates(spot_data: dict, new_review: dict, new_review_id: 
     old_avg = s.get("avg_rating", 0.0)
     new_count = old_count + 1
     s["review_count"] = new_count
-    s["avg_rating"] = (old_avg * old_count + new_review["overall_rating"]) / new_count
+    s["avg_rating"] = round((old_avg * old_count + new_review["overall_rating"]) / new_count, 2)
 
     # --- single-value mode fields via running counts ---
     # Unanswered (None) isn't a vote: skip it so the existing mode is preserved.

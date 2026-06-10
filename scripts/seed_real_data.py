@@ -34,6 +34,10 @@ from firebase_admin import auth, credentials, firestore
 DEFAULT_CENTER_LAT = 34.0522
 DEFAULT_CENTER_LNG = -118.2437
 
+# A user the developer created manually in Firebase Auth for on-device testing.
+# Seeded as a review author on every spot so there's always "my own" data to view.
+PERSONAL_TEST_UID = "32WaqmcxZ2e6Zg5aGR9eMNvwokB2"
+
 SPOT_NAMES = [
     "Griffith Observatory Overlook",
     "Echo Park Lake Bridge",
@@ -50,6 +54,26 @@ SPOT_NAMES = [
     "Runyon Canyon Peak",
     "Downtown Rooftop North",
     "Silver Lake Reservoir",
+    "Elysian Park Vista",
+    "Bronson Canyon Caves",
+    "Abbot Kinney Murals",
+    "Santa Monica Pier End",
+    "Malibu Pier Sunrise",
+    "Topanga Lookout Ridge",
+    "Eaton Canyon Falls",
+    "Walt Disney Concert Curve",
+    "Union Station Archway",
+    "Watts Towers Base",
+    "Manhattan Beach Pylons",
+    "Palos Verdes Tide Pools",
+    "Leo Carrillo Sea Caves",
+    "Inspiration Point Trail",
+    "Greystone Mansion Steps",
+    "Los Liones Overlook",
+    "Ascot Hills Ridge",
+    "Debs Park Summit",
+    "Culver City Stairs Top",
+    "Marina del Rey Jetty",
 ]
 
 NOTES_POOL = [
@@ -251,10 +275,10 @@ def main():
     parser.add_argument(
         "--project", required=True, help="Firebase project ID (must start with 'scout-dev')"
     )
-    parser.add_argument("--users", type=int, default=3)
-    parser.add_argument("--spots", type=int, default=8)
-    parser.add_argument("--min-reviews", type=int, default=2)
-    parser.add_argument("--max-reviews", type=int, default=4)
+    parser.add_argument("--users", type=int, default=20)
+    parser.add_argument("--spots", type=int, default=50)
+    parser.add_argument("--min-reviews", type=int, default=4)
+    parser.add_argument("--max-reviews", type=int, default=12)
     parser.add_argument("--center-lat", type=float, default=DEFAULT_CENTER_LAT)
     parser.add_argument("--center-lng", type=float, default=DEFAULT_CENTER_LNG)
     parser.add_argument("--radius-km", type=float, default=10.0)
@@ -287,11 +311,17 @@ def main():
     now = datetime.now(timezone.utc)
 
     # ---- 1. Create users via Admin SDK (no passwords, no tokens) ----
-    user_names = ["Alice Chen", "Bob Rivera", "Carol Kim", "Dana Patel", "Evan Wu"]
+    user_names = [
+        "Alice Chen", "Bob Rivera", "Carol Kim", "Dana Patel", "Evan Wu",
+        "Fiona Marsh", "Gabe Ortiz", "Hana Suzuki", "Ian Brooks", "Jada Nelson",
+        "Kai Lawson", "Lena Volkov", "Mateo Reyes", "Nora Bennett", "Omar Haddad",
+        "Priya Nair", "Quentin Lee", "Rosa Mendez", "Sam Whitfield", "Tara Okafor",
+    ]
     users = []
     for i in range(args.users):
         display = user_names[i] if i < len(user_names) else f"Test User {i + 1}"
-        email = f"seed-{display.split()[0].lower()}@example.com"
+        # Stable, unique email even past the name pool, so reruns find the same user.
+        email = f"seed-{display.split()[0].lower()}-{i}@example.com"
         try:
             user_record = auth.create_user(email=email, display_name=display)
             uid = user_record.uid
@@ -299,7 +329,19 @@ def main():
             user_record = auth.get_user_by_email(email)
             uid = user_record.uid
         users.append({"uid": uid, "email": email, "display_name": display})
-    print(f"[seed] Created/found {len(users)} users in Firebase Auth.")
+
+    # The developer's own pre-existing Auth user (not created here — just looked up
+    # for its email/name). Added to the author pool and guaranteed a review per spot.
+    try:
+        rec = auth.get_user(PERSONAL_TEST_UID)
+        personal_email = rec.email or "kenneth-test@example.com"
+        personal_name = rec.display_name or "Kenneth (Test)"
+    except Exception as e:
+        print(f"[seed] Could not look up personal test user ({e}); using placeholders.")
+        personal_email, personal_name = "kenneth-test@example.com", "Kenneth (Test)"
+    personal_user = {"uid": PERSONAL_TEST_UID, "email": personal_email, "display_name": personal_name}
+    users.append(personal_user)
+    print(f"[seed] Created/found {len(users)} users in Firebase Auth (incl. personal test user).")
 
     # ---- 2. Write user docs (review_count filled in after reviews are generated) ----
     review_counts: dict[str, int] = {u["uid"]: 0 for u in users}
@@ -311,7 +353,11 @@ def main():
         spot_id = str(uuid4())
         spot_ids.append(spot_id)
         lat, lng = jittered_coord(args.center_lat, args.center_lng, args.radius_km)
-        name = SPOT_NAMES[i] if i < len(SPOT_NAMES) else f"Test Spot {i + 1}"
+        if i < len(SPOT_NAMES):
+            name = SPOT_NAMES[i]
+        else:
+            # Past the pool, cycle names with a suffix so they stay readable + unique.
+            name = f"{SPOT_NAMES[i % len(SPOT_NAMES)]} #{i // len(SPOT_NAMES) + 1}"
 
         spot_created = now - timedelta(days=random.randint(7, 90))
         spot_doc = {
@@ -325,15 +371,20 @@ def main():
             **empty_aggregates(),
         }
 
-        num_reviews = random.randint(args.min_reviews, args.max_reviews)
+        # Distinct authors per spot — one review per user per spot (matches the API
+        # rule). Capped at the user count; guarantee the personal test user is one.
+        num_reviews = min(random.randint(args.min_reviews, args.max_reviews), len(users))
+        authors = random.sample(users, num_reviews)
+        if personal_user not in authors:
+            authors[-1] = personal_user
+
         review_offsets = sorted(
             random.uniform(0.5, (now - spot_created).total_seconds() / 86400.0)
             for _ in range(num_reviews)
         )
         reviews = []
-        for offset_days in review_offsets:
+        for author, offset_days in zip(authors, review_offsets):
             created_at = spot_created + timedelta(days=offset_days)
-            author = random.choice(users)
             review_id, review = make_review(spot_id, spot_doc, author["uid"], created_at)
             reviews.append((review_id, review))
             review_counts[author["uid"]] += 1
