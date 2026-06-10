@@ -42,7 +42,63 @@ class TestUsersMe:
         assert r.status_code == 200
         assert r.json()["review_count"] == 0
 
+    def test_location_defaults_none(self, client, auth_with_uid):
+        """home_city / home_country are None until set."""
+        r = client.get("/users/me", headers=auth_with_uid["headers"])
+        assert r.status_code == 200
+        body = r.json()
+        assert body["home_city"] is None
+        assert body["home_country"] is None
+
     def test_requires_auth(self, client):
         """Missing auth → 401."""
         r = client.get("/users/me")
+        assert r.status_code == 401
+
+
+class TestUpdateUsersMe:
+    """Test PATCH /users/me — profile location updates."""
+
+    def test_set_both_location_fields(self, client, auth_with_uid):
+        """PATCH sets home_city/home_country and they persist."""
+        headers = auth_with_uid["headers"]
+        r = client.patch(
+            "/users/me",
+            json={"home_city": "Seattle", "home_country": "United States"},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["home_city"] == "Seattle"
+        assert body["home_country"] == "United States"
+
+        # Persisted across a fresh GET
+        got = client.get("/users/me", headers=headers).json()
+        assert got["home_city"] == "Seattle"
+        assert got["home_country"] == "United States"
+
+    def test_partial_update_preserves_other_field(self, client, auth_with_uid):
+        """PATCH with only one field leaves the other untouched."""
+        headers = auth_with_uid["headers"]
+        client.patch(
+            "/users/me",
+            json={"home_city": "Tokyo", "home_country": "Japan"},
+            headers=headers,
+        )
+        r = client.patch("/users/me", json={"home_city": "Osaka"}, headers=headers)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["home_city"] == "Osaka"
+        assert body["home_country"] == "Japan"  # preserved
+
+    def test_blank_clears_field(self, client, auth_with_uid):
+        """A blank/whitespace value clears the field to None."""
+        headers = auth_with_uid["headers"]
+        client.patch("/users/me", json={"home_city": "Paris"}, headers=headers)
+        r = client.patch("/users/me", json={"home_city": "   "}, headers=headers)
+        assert r.status_code == 200
+        assert r.json()["home_city"] is None
+
+    def test_update_requires_auth(self, client):
+        r = client.patch("/users/me", json={"home_city": "X"})
         assert r.status_code == 401

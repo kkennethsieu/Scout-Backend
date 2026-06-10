@@ -22,11 +22,11 @@ async def get_or_create_user(uid: str, token_claims: dict) -> dict:
 
     if "email" in existing:  # already initialized
         existing["review_count"] = max(0, existing.get("review_count", 0))
-        return {**existing, "uid": uid}
+        return {**existing, "id": uid}
 
     # Doc absent, or count-only — backfill identity, preserving any counted reviews.
     identity = {
-        "uid": uid,
+        "id": uid,
         "email": token_claims.get("email", ""),
         "display_name": token_claims.get("name", ""),
         "photo_url": token_claims.get("picture"),
@@ -34,3 +34,19 @@ async def get_or_create_user(uid: str, token_claims: dict) -> dict:
     }
     ref.set(identity, merge=True)
     return {"review_count": max(0, existing.get("review_count", 0)), **existing, **identity}
+
+
+async def update_user(uid: str, token_claims: dict, updates: dict) -> dict:
+    """
+    Update the caller's own profile fields (e.g. home_city/home_country).
+
+    `updates` is the PATCH body with unset fields already excluded, so only the
+    keys the client actually sent are written. Ensures the doc exists first
+    (read-through create/backfill), then merges the changes.
+    """
+    user = await get_or_create_user(uid, token_claims)
+
+    if updates:
+        db.collection("users").document(uid).set(updates, merge=True)
+
+    return {**user, **updates}

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.deps import current_uid, verify_token
 from app.schemas.pagination import PaginatedReviews
-from app.schemas.user import UserResponse
+from app.schemas.user import UserResponse, UserUpdate
 from app.services import review_service, user_service
 
 router = APIRouter(tags=["users"])
@@ -22,6 +22,22 @@ async def get_current_user(
     """
     uid = claims["uid"]
     return await user_service.get_or_create_user(uid, claims)
+
+
+@router.patch("/users/me", response_model=UserResponse)
+async def update_current_user(
+    updates: UserUpdate,
+    claims: dict = Depends(verify_token),
+):
+    """
+    Update the caller's own profile (home_city / home_country).
+
+    PATCH semantics — only fields present in the body are changed; a blank
+    value clears that field. Uses verify_token (not current_uid) so the doc
+    can be created from claims if it doesn't exist yet.
+    """
+    uid = claims["uid"]
+    return await user_service.update_user(uid, claims, updates.model_dump(exclude_unset=True))
 
 
 @router.get("/users/me/reviews", response_model=PaginatedReviews)

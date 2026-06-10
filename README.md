@@ -88,6 +88,7 @@ make lint
 | :--- | :--- | :--- | :--- |
 | **GET** | `/health` | — | Liveness check (Cloud Run) |
 | **GET** | `/users/me` | ✓ | Fetch or initialize current user doc (read-through) |
+| **PATCH** | `/users/me` | ✓ | Update own profile location (`home_city` / `home_country`); partial update, blank clears a field |
 | **GET** | `/spots` | ✓ | Find nearby spots within radius (lat/lng/radius_km) |
 | **GET** | `/spots/{id}` | ✓ | Retrieve a single spot's details and computed aggregates |
 | **GET** | `/spots/{id}/reviews` | ✓ | Fetch paginated review feed for a spot |
@@ -108,7 +109,7 @@ make lint
 
 `FORBIDDEN` (403) is returned by `DELETE /reviews/{id}` when the caller is not the review's author.
 
-`GET /users/me` returns a `review_count` field — the user's number of reviews, maintained atomically as reviews are created and deleted (no per-request count query needed).
+`GET /users/me` returns a `review_count` field — the user's number of reviews, maintained atomically as reviews are created and deleted (no per-request count query needed). It also returns `home_city` / `home_country` (where the user is from), `null` until set via `PATCH /users/me`.
 
 ## Review Submission Contract
 

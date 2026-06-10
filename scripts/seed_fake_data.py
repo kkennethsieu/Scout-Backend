@@ -405,6 +405,8 @@ def main() -> None:
                 "photo_url": None,
                 "created_at": now,
                 "review_count": review_counts[u["uid"]],
+                "home_city": "Los Angeles",
+                "home_country": "United States",
             },
         )
     user_batch.commit()
