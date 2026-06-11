@@ -1,5 +1,6 @@
 """Spot service — nearby query, name search, and single-spot fetch."""
 
+import asyncio
 import base64
 import binascii
 
@@ -67,8 +68,13 @@ async def find_nearby(
         .limit(_NEARBY_BAND_CAP)
     )
 
+    # Run the blocking Firestore read off the event loop. Materialize with
+    # list() inside the thread — .stream() is a lazy generator that does network
+    # I/O per iteration, so listing it here moves all of it off the loop.
+    band = await asyncio.to_thread(lambda: list(query.stream()))
+
     candidates = []
-    for doc in query.stream():
+    for doc in band:
         s = doc.to_dict()
         if not (min_lng <= s["public_lng"] <= max_lng):
             continue
@@ -117,17 +123,23 @@ async def search_by_name(q: str, limit: int) -> list[dict]:
     Global (not geo-scoped) — a direct name hit jumps straight to the spot.
 
     Same in-memory streaming model as find_nearby: fine at <100 spots. The scale
-    path is a normalized name field with Firestore prefix queries, or an external
-    search index (Algolia/Typesense) for true substring at volume.
+    path is a denormalized name_lower field with Firestore range queries for
+    prefix, or an external search index (Algolia/Typesense) for true substring
+    at volume.
     """
     q = q.strip().lower()
     if not q:
         return []
 
+    # Blocking Firestore read off the event loop (see find_nearby).
+    docs = await asyncio.to_thread(lambda: list(db.collection("spots").stream()))
+
     matches = []
-    for doc in db.collection("spots").stream():
+    for doc in docs:
         s = doc.to_dict()
-        name_lower = s["name"].lower()
+        name_lower = (s.get("name") or "").lower()
+        if not name_lower:
+            continue
         if q in name_lower:
             s["id"] = doc.id
             matches.append((_name_rank(name_lower, q), s))
