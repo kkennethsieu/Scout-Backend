@@ -1,6 +1,6 @@
 """User endpoints — current user profile and reviews."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.api.v1.deps import current_uid, verify_token
 from app.schemas.pagination import PaginatedReviews
@@ -38,6 +38,21 @@ async def update_current_user(
     """
     uid = claims["uid"]
     return await user_service.update_user(uid, claims, updates.model_dump(exclude_unset=True))
+
+
+@router.delete("/users/me", status_code=204)
+async def delete_current_user(
+    uid: str = Depends(current_uid),
+):
+    """
+    Delete the caller's account.
+
+    Anonymizes their reviews (kept as community content), hard-deletes their user
+    doc, and deletes the Firebase Auth user server-side — avoiding the client-side
+    requiresRecentLogin re-auth. The client signs out locally after this returns.
+    """
+    await user_service.delete_account(uid)
+    return Response(status_code=204)
 
 
 @router.get("/users/me/reviews", response_model=PaginatedReviews)

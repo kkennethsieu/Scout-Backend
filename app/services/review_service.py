@@ -24,6 +24,7 @@ from app.schemas.review import (
     ReviewCreate,
     SpotWithReviewCreate,
 )
+from app.services import spot_cache
 from app.services.aggregates import empty_aggregates, update_or_init_aggregates
 from app.services.geo import bounding_box, haversine_km
 from app.services.storage_service import (
@@ -232,6 +233,9 @@ async def submit_review(
         await cleanup(photo_paths)
         raise InternalError()
 
+    # Spot aggregates changed — drop the cached snapshot on this instance.
+    spot_cache.invalidate()
+
     return {**review_dict, "id": review_id, "spot_id": spot_id}
 
 
@@ -345,6 +349,9 @@ async def submit_with_new_spot(
         await cleanup(photo_paths)
         raise InternalError()
 
+    # New spot added — drop the cached snapshot on this instance.
+    spot_cache.invalidate()
+
     spot_dict["id"] = spot_id
     review_dict["id"] = review_id
 
@@ -435,6 +442,9 @@ async def delete_review(review_id: str, uid: str) -> None:
     except Exception as e:
         log.error("Delete transaction failed: %s", str(e))
         raise InternalError()
+
+    # Spot aggregates changed (or the spot was removed) — drop the cached snapshot.
+    spot_cache.invalidate()
 
     # Photos can't be removed inside a Firestore txn — clean them up post-commit.
     await delete_review_blobs(review_id)

@@ -1,17 +1,12 @@
 """Spot service — nearby query, name search, and single-spot fetch."""
 
-import asyncio
 import base64
 import binascii
 
 from app.core.exceptions import InvalidCursor, SpotNotFound
 from app.core.firebase import db
+from app.services import spot_cache
 from app.services.geo import bounding_box, haversine_km
-
-# Safety cap on how many docs the nearby query scans from the latitude band.
-# At current scale (<100 spots) the whole band fits well under this; it only
-# guards against an unbounded scan. Swap to geohashing when this is the limit.
-_NEARBY_BAND_CAP = 500
 
 
 def _encode_cursor(distance_km: float, spot_id: str) -> str:
@@ -50,60 +45,41 @@ async def find_nearby(
 
     Shape: {"items": [...], "limit": limit, "next_cursor": str | None}.
 
-    INVARIANT: Correct only while the total spots in the latitude band stays
-    under `_NEARBY_BAND_CAP`. Firestore's range filter on public_lat can't
-    order by distance, so we scan the whole band, compute haversine distance,
-    filter by radius, and sort in memory. Fine at <100 spots. Swap to
-    geohashing when the band exceeds the cap.
+    INVARIANT: Scans the full spots snapshot (served from spot_cache), computes
+    haversine distance, filters by radius, and sorts in memory. Fine at <100
+    spots; swap to geohashing / an external index when the collection outgrows an
+    in-memory scan.
 
     Pagination uses an opaque (distance, id) cursor — see _encode_cursor — since
     the result order is by distance rather than a Firestore-indexed field.
+    Distance is kept in a tuple alongside the spot (never written into the spot
+    dict) so the shared cached dicts stay un-mutated.
     """
     min_lat, max_lat, min_lng, max_lng = bounding_box(lat, lng, radius_km)
+    spots = await spot_cache.get_all_spots()
 
-    query = (
-        db.collection("spots")
-        .where("public_lat", ">=", min_lat)
-        .where("public_lat", "<=", max_lat)
-        .limit(_NEARBY_BAND_CAP)
-    )
-
-    # Run the blocking Firestore read off the event loop. Materialize with
-    # list() inside the thread — .stream() is a lazy generator that does network
-    # I/O per iteration, so listing it here moves all of it off the loop.
-    band = await asyncio.to_thread(lambda: list(query.stream()))
-
-    candidates = []
-    for doc in band:
-        s = doc.to_dict()
+    candidates = []  # (distance_km, id, spot)
+    for s in spots:
+        if not (min_lat <= s["public_lat"] <= max_lat):
+            continue
         if not (min_lng <= s["public_lng"] <= max_lng):
             continue
         d = haversine_km(lat, lng, s["public_lat"], s["public_lng"])
         if d <= radius_km:
-            s["id"] = doc.id
-            s["_distance_km"] = d
-            candidates.append(s)
+            candidates.append((d, s["id"], s))
 
     # Sort by distance, then id as a stable tiebreak so the cursor is unambiguous.
-    candidates.sort(key=lambda s: (s["_distance_km"], s["id"]))
+    candidates.sort(key=lambda c: (c[0], c[1]))
 
     # Apply cursor: keep only candidates strictly after the (distance, id) pair.
     if cursor:
         after_d, after_id = _decode_cursor(cursor)
-        candidates = [s for s in candidates if (s["_distance_km"], s["id"]) > (after_d, after_id)]
+        candidates = [c for c in candidates if (c[0], c[1]) > (after_d, after_id)]
 
     page = candidates[:limit]
-    next_cursor = (
-        _encode_cursor(page[-1]["_distance_km"], page[-1]["id"])
-        if len(candidates) > limit
-        else None
-    )
+    next_cursor = _encode_cursor(page[-1][0], page[-1][1]) if len(candidates) > limit else None
 
-    # Drop the internal distance key — not part of the response schema.
-    for s in page:
-        s.pop("_distance_km", None)
-
-    return {"items": page, "limit": limit, "next_cursor": next_cursor}
+    return {"items": [c[2] for c in page], "limit": limit, "next_cursor": next_cursor}
 
 
 def _name_rank(name_lower: str, q: str) -> int:
@@ -122,26 +98,23 @@ async def search_by_name(q: str, limit: int) -> list[dict]:
     Ranked exact > prefix > substring, tie-broken by review_count (desc) then name.
     Global (not geo-scoped) — a direct name hit jumps straight to the spot.
 
-    Same in-memory streaming model as find_nearby: fine at <100 spots. The scale
-    path is a denormalized name_lower field with Firestore range queries for
-    prefix, or an external search index (Algolia/Typesense) for true substring
+    Scans the full spots snapshot (served from spot_cache): fine at <100 spots.
+    The scale path is a denormalized name_lower field with Firestore range queries
+    for prefix, or an external search index (Algolia/Typesense) for true substring
     at volume.
     """
     q = q.strip().lower()
     if not q:
         return []
 
-    # Blocking Firestore read off the event loop (see find_nearby).
-    docs = await asyncio.to_thread(lambda: list(db.collection("spots").stream()))
+    spots = await spot_cache.get_all_spots()
 
     matches = []
-    for doc in docs:
-        s = doc.to_dict()
+    for s in spots:
         name_lower = (s.get("name") or "").lower()
         if not name_lower:
             continue
         if q in name_lower:
-            s["id"] = doc.id
             matches.append((_name_rank(name_lower, q), s))
 
     matches.sort(key=lambda m: (m[0], -m[1].get("review_count", 0), m[1]["name"]))

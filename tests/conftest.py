@@ -95,6 +95,16 @@ def clean_state():
     """Clean Firestore and Storage after each test."""
     yield
 
+    # Drop the in-process spots snapshot. Tests seed spots straight into Firestore
+    # (bypassing the service layer that would invalidate), so without this a stale
+    # snapshot from one test leaks into the next.
+    try:
+        from app.services import spot_cache
+
+        spot_cache.invalidate()
+    except Exception:
+        pass
+
     # Clear Firestore
     try:
         requests.delete(

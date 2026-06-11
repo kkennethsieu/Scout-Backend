@@ -22,12 +22,13 @@ router = APIRouter(tags=["spots"])
 async def list_nearby_spots(
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
-    radius_km: float = Query(..., gt=0, le=100),
+    radius_km: float = Query(..., gt=0, le=1000),
     limit: int = Query(20, ge=1, le=50),
     cursor: str | None = Query(None),
     uid: str = Depends(current_uid),
 ):
     """List spots within radius_km of (lat, lng), sorted by distance, paginated."""
+    radius_km = min(radius_km, 500)
     return await spot_service.find_nearby(lat, lng, radius_km, limit, cursor)
 
 

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     STORAGE_BUCKET: str
     GEOCODING_API_KEY: str
     MAX_PHOTO_BYTES: int = 10 * 1024 * 1024  # 10 MB
+    # TTL for the in-process spots snapshot that backs the nearby + search scans.
+    SPOT_CACHE_TTL_SECONDS: int = 45
     FIREBASE_CREDENTIALS_PATH: str | None = None
     ENV: Literal["dev", "prod", "test"] = "dev"
     CORS_ORIGINS: list[str] = ["*"]
