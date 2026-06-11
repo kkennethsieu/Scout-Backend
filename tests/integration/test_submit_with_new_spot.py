@@ -136,7 +136,7 @@ class TestSubmitWithNewSpot:
             headers=auth_headers,
         )
         assert r2.status_code == 200
-        spot_ids = [s["id"] for s in r2.json()]
+        spot_ids = [s["id"] for s in r2.json()["items"]]
         assert spot_id in spot_ids
 
     def test_requires_auth(self, client):

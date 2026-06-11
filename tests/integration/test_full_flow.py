@@ -44,7 +44,7 @@ class TestFullFlow:
             headers=headers,
         )
         assert r1.status_code == 200
-        assert r1.json() == []
+        assert r1.json()["items"] == []
 
         # Step 2: submit-with-new-spot → returns spot + review
         form_data = {
@@ -100,7 +100,7 @@ class TestFullFlow:
             headers=headers,
         )
         assert r3.status_code == 200
-        spots = r3.json()
+        spots = r3.json()["items"]
         assert len(spots) == 1
         assert spots[0]["id"] == spot_id
         assert spots[0]["name"] == "Griffith Observatory"

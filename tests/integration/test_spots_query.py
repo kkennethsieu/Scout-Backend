@@ -35,7 +35,9 @@ class TestSpotsQuery:
             headers=auth_headers,
         )
         assert r.status_code == 200
-        assert r.json() == []
+        body = r.json()
+        assert body["items"] == []
+        assert body["next_cursor"] is None
 
     def test_finds_nearby_spots(self, client, auth_headers):
         """Spots within radius are returned."""
@@ -50,7 +52,7 @@ class TestSpotsQuery:
             headers=auth_headers,
         )
         assert r.status_code == 200
-        spots = r.json()
+        spots = r.json()["items"]
         assert len(spots) >= 2  # DTLA and Hollywood should be within 20km
 
     def test_distance_sorted(self, client, auth_headers):
@@ -65,7 +67,7 @@ class TestSpotsQuery:
             headers=auth_headers,
         )
         assert r.status_code == 200
-        spots = r.json()
+        spots = r.json()["items"]
         assert len(spots) == 3
         # First spot should be the nearest
         assert spots[0]["name"] == "Near Spot"
@@ -81,7 +83,7 @@ class TestSpotsQuery:
             headers=auth_headers,
         )
         assert r.status_code == 200
-        spots = r.json()
+        spots = r.json()["items"]
         assert len(spots) == 1
         assert spots[0]["name"] == "LA Spot"
 
@@ -102,7 +104,7 @@ class TestSpotsQuery:
             headers=auth_headers,
         )
         assert r.status_code == 200
-        assert len(r.json()) == 2
+        assert len(r.json()["items"]) == 2
 
     def test_lightweight_schema(self, client, auth_headers):
         """Verify nearby query returns lightweight SpotSummaryResponse without full aggregates."""
@@ -114,7 +116,7 @@ class TestSpotsQuery:
             headers=auth_headers,
         )
         assert r.status_code == 200
-        spots = r.json()
+        spots = r.json()["items"]
         assert len(spots) == 1
         spot = spots[0]
 
@@ -133,3 +135,40 @@ class TestSpotsQuery:
         assert "mode_access_level" not in spot
         assert "avg_entrance_fee" not in spot
         assert "mode_crowd_level" not in spot
+
+    def test_cursor_pagination(self, client, auth_headers):
+        """Paging with a cursor walks the full result set with no gaps or overlap."""
+        for i in range(5):
+            _seed_spot(client, f"page-spot-{i}", f"Spot {i}", 34.05 + i * 0.001, -118.24)
+
+        seen = []
+        cursor = None
+        pages = 0
+        while True:
+            params = {"lat": 34.05, "lng": -118.24, "radius_km": 10, "limit": 2}
+            if cursor:
+                params["cursor"] = cursor
+            r = client.get("/spots", params=params, headers=auth_headers)
+            assert r.status_code == 200
+            body = r.json()
+            seen.extend(s["id"] for s in body["items"])
+            cursor = body["next_cursor"]
+            pages += 1
+            if cursor is None:
+                break
+            assert pages < 10  # guard against an infinite loop
+
+        # 5 spots over limit=2 → pages of 2, 2, 1; every spot seen exactly once.
+        assert pages == 3
+        assert len(seen) == 5
+        assert len(set(seen)) == 5
+
+    def test_invalid_cursor_rejected(self, client, auth_headers):
+        """A malformed cursor → 400 INVALID_CURSOR."""
+        r = client.get(
+            "/spots",
+            params={"lat": 34.05, "lng": -118.24, "radius_km": 10, "cursor": "!!notbase64!!"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+        assert r.json()["code"] == "INVALID_CURSOR"
