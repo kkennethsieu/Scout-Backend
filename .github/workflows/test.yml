@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-java@v4   # emulators need JRE
         with:
           distribution: "temurin"
-          java-version: "17"
+          java-version: "21"
 
       - uses: actions/setup-node@v4
         with:
