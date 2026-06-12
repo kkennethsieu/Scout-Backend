@@ -36,6 +36,9 @@ async def get_or_create_user(uid: str, token_claims: dict) -> dict:
 
     if "email" in existing:  # already initialized
         existing["review_count"] = max(0, existing.get("review_count", 0))
+        # Default notification prefs for docs created before they existed.
+        existing.setdefault("email_notifications", True)
+        existing.setdefault("push_notifications", True)
         return {**existing, "id": uid}
 
     # Doc absent, or count-only — backfill identity, preserving any counted reviews.
@@ -45,6 +48,8 @@ async def get_or_create_user(uid: str, token_claims: dict) -> dict:
         "display_name": token_claims.get("name", ""),
         "photo_url": token_claims.get("picture"),
         "created_at": datetime.now(timezone.utc),
+        "email_notifications": True,
+        "push_notifications": True,
     }
     ref.set(identity, merge=True)
     return {"review_count": max(0, existing.get("review_count", 0)), **existing, **identity}

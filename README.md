@@ -88,7 +88,7 @@ make lint
 | :--- | :--- | :--- | :--- |
 | **GET** | `/health` | — | Liveness check (Cloud Run) |
 | **GET** | `/users/me` | ✓ | Fetch or initialize current user doc (read-through) |
-| **PATCH** | `/users/me` | ✓ | Update own profile location (`home_city` / `home_country`); partial update, blank clears a field |
+| **PATCH** | `/users/me` | ✓ | Update own profile (multipart): `display_name`, `home_city`, `home_country`, notification prefs, optional profile `photo`. Partial update; `email` is read-only |
 | **GET** | `/spots` | ✓ | Find nearby spots within radius (lat/lng/radius_km) |
 | **GET** | `/spots/{id}` | ✓ | Retrieve a single spot's details and computed aggregates |
 | **GET** | `/spots/{id}/reviews` | ✓ | Fetch paginated review feed for a spot |
@@ -111,7 +111,16 @@ make lint
 
 A fetched review (`GET /reviews/{id}`, feeds, and the `with-review` response) carries its spot's location denormalized at create time — `spot_name`, `public_lat`, `public_lng`, `city`, `admin_area` — so the client can render/map a review without a second spot lookup. These are always present on every review.
 
-`GET /users/me` returns a `review_count` field — the user's number of reviews, maintained atomically as reviews are created and deleted (no per-request count query needed). It also returns `home_city` / `home_country` (where the user is from), `null` until set via `PATCH /users/me`.
+`GET /users/me` returns a `review_count` field — the user's number of reviews, maintained atomically as reviews are created and deleted (no per-request count query needed). It also returns `home_city` / `home_country` (where the user is from), `null` until set via `PATCH /users/me`, and `email_notifications` / `push_notifications` (notification preferences, both default `true`).
+
+## Profile Updates (`PATCH /users/me`)
+
+Profile edits are sent as **multipart/form-data** (so the optional avatar can ride along):
+
+- **Editable:** `display_name`, `home_city`, `home_country`, `email_notifications`, `push_notifications`, and an optional `photo` (single JPEG, same rules as review photos — see [docs/ios-upload-contract.md](docs/ios-upload-contract.md)).
+- **`email` is read-only** — it's the Firebase Auth login identity and is never written from this endpoint.
+- **Partial update:** only the fields you send change. A blank `home_city` / `home_country` clears it (`null`); a blank `display_name` is ignored (it's non-nullable). Omitted notification booleans are left unchanged.
+- **Photo:** when a `photo` part is present it's validated (JPEG, ≤10 MB), EXIF-stripped, uploaded to Cloud Storage under `users/{uid}/avatar/`, and becomes `photo_url`; the previous avatar is pruned. A non-JPEG → 400 `PHOTO_INVALID_FORMAT`.
 
 ## Review Submission Contract
 

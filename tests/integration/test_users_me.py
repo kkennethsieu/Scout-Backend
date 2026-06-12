@@ -1,5 +1,27 @@
 """Integration tests for GET /users/me — read-through user doc creation."""
 
+import io
+
+from PIL import Image
+
+
+def _make_jpeg():
+    """A valid JPEG file-like for multipart upload."""
+    img = Image.new("RGB", (100, 100), color="red")
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+    return ("avatar.jpg", buf, "image/jpeg")
+
+
+def _make_png():
+    """A PNG file-like for multipart upload (should be rejected)."""
+    img = Image.new("RGB", (100, 100), color="blue")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return ("avatar.png", buf, "image/png")
+
 
 class TestUsersMe:
     """Test user profile endpoint."""
@@ -50,6 +72,14 @@ class TestUsersMe:
         assert body["home_city"] is None
         assert body["home_country"] is None
 
+    def test_notification_prefs_default_true(self, client, auth_with_uid):
+        """email_notifications / push_notifications default to True."""
+        r = client.get("/users/me", headers=auth_with_uid["headers"])
+        assert r.status_code == 200
+        body = r.json()
+        assert body["email_notifications"] is True
+        assert body["push_notifications"] is True
+
     def test_requires_auth(self, client):
         """Missing auth → 401."""
         r = client.get("/users/me")
@@ -57,14 +87,14 @@ class TestUsersMe:
 
 
 class TestUpdateUsersMe:
-    """Test PATCH /users/me — profile location updates."""
+    """Test PATCH /users/me — multipart profile updates."""
 
     def test_set_both_location_fields(self, client, auth_with_uid):
         """PATCH sets home_city/home_country and they persist."""
         headers = auth_with_uid["headers"]
         r = client.patch(
             "/users/me",
-            json={"home_city": "Seattle", "home_country": "United States"},
+            data={"home_city": "Seattle", "home_country": "United States"},
             headers=headers,
         )
         assert r.status_code == 200
@@ -82,10 +112,10 @@ class TestUpdateUsersMe:
         headers = auth_with_uid["headers"]
         client.patch(
             "/users/me",
-            json={"home_city": "Tokyo", "home_country": "Japan"},
+            data={"home_city": "Tokyo", "home_country": "Japan"},
             headers=headers,
         )
-        r = client.patch("/users/me", json={"home_city": "Osaka"}, headers=headers)
+        r = client.patch("/users/me", data={"home_city": "Osaka"}, headers=headers)
         assert r.status_code == 200
         body = r.json()
         assert body["home_city"] == "Osaka"
@@ -94,11 +124,88 @@ class TestUpdateUsersMe:
     def test_blank_clears_field(self, client, auth_with_uid):
         """A blank/whitespace value clears the field to None."""
         headers = auth_with_uid["headers"]
-        client.patch("/users/me", json={"home_city": "Paris"}, headers=headers)
-        r = client.patch("/users/me", json={"home_city": "   "}, headers=headers)
+        client.patch("/users/me", data={"home_city": "Paris"}, headers=headers)
+        r = client.patch("/users/me", data={"home_city": "   "}, headers=headers)
         assert r.status_code == 200
         assert r.json()["home_city"] is None
 
+    def test_update_display_name(self, client, auth_with_uid):
+        """display_name is editable and persists."""
+        headers = auth_with_uid["headers"]
+        r = client.patch("/users/me", data={"display_name": "Ansel Adams"}, headers=headers)
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "Ansel Adams"
+        got = client.get("/users/me", headers=headers).json()
+        assert got["display_name"] == "Ansel Adams"
+
+    def test_blank_display_name_ignored(self, client, auth_with_uid):
+        """A blank display_name is ignored, not cleared (it's non-nullable)."""
+        headers = auth_with_uid["headers"]
+        client.patch("/users/me", data={"display_name": "Keeper"}, headers=headers)
+        r = client.patch("/users/me", data={"display_name": "   "}, headers=headers)
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "Keeper"
+
+    def test_toggle_notification_prefs(self, client, auth_with_uid):
+        """Notification booleans toggle and persist."""
+        headers = auth_with_uid["headers"]
+        r = client.patch(
+            "/users/me",
+            data={"email_notifications": "false", "push_notifications": "false"},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["email_notifications"] is False
+        assert body["push_notifications"] is False
+
+        # Untouched pref preserved on a partial update
+        r2 = client.patch("/users/me", data={"push_notifications": "true"}, headers=headers)
+        assert r2.status_code == 200
+        body2 = r2.json()
+        assert body2["push_notifications"] is True
+        assert body2["email_notifications"] is False  # preserved
+
+    def test_email_is_read_only(self, client, auth_with_uid):
+        """Sending an email field does not change the stored email."""
+        headers = auth_with_uid["headers"]
+        original = client.get("/users/me", headers=headers).json()["email"]
+        r = client.patch(
+            "/users/me",
+            data={"email": "attacker@evil.com", "home_city": "X"},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        assert r.json()["email"] == original
+
+    def test_upload_photo_sets_photo_url(self, client, auth_with_uid):
+        """A photo part uploads and sets photo_url under the user's avatar prefix."""
+        headers = auth_with_uid["headers"]
+        uid = auth_with_uid["uid"]
+        r = client.patch(
+            "/users/me",
+            files={"photo": _make_jpeg()},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        photo_url = r.json()["photo_url"]
+        assert photo_url is not None
+        assert f"users/{uid}/avatar/" in photo_url
+
+        # Persisted across a fresh GET
+        got = client.get("/users/me", headers=headers).json()
+        assert got["photo_url"] == photo_url
+
+    def test_upload_non_jpeg_rejected(self, client, auth_with_uid):
+        """A non-JPEG photo → 400 PHOTO_INVALID_FORMAT."""
+        r = client.patch(
+            "/users/me",
+            files={"photo": _make_png()},
+            headers=auth_with_uid["headers"],
+        )
+        assert r.status_code == 400
+        assert r.json()["code"] == "PHOTO_INVALID_FORMAT"
+
     def test_update_requires_auth(self, client):
-        r = client.patch("/users/me", json={"home_city": "X"})
+        r = client.patch("/users/me", data={"home_city": "X"})
         assert r.status_code == 401
