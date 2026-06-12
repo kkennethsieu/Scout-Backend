@@ -1,7 +1,11 @@
 """Firebase Admin SDK initialization and shared clients."""
 
+import os
+
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
+from google.auth.credentials import AnonymousCredentials
+from google.cloud import storage as gcs
 
 from app.core.config import settings
 
@@ -33,6 +37,15 @@ def get_db():
 
 def get_bucket():
     """Return the Cloud Storage bucket. Must call init_firebase() first."""
+    if os.environ.get("STORAGE_EMULATOR_HOST"):
+        # Emulator doesn't authenticate — skip OAuth token minting entirely.
+        # The google-cloud-storage client (unlike Firestore) won't go anonymous
+        # on its own when handed a real credential, so build it explicitly.
+        client = gcs.Client(
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT", "scout-test"),
+            credentials=AnonymousCredentials(),
+        )
+        return client.bucket(settings.STORAGE_BUCKET)
     return storage.bucket()
 
 
