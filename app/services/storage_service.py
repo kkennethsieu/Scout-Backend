@@ -86,6 +86,42 @@ def _strip_exif(data: bytes) -> bytes:
     return out.getvalue()
 
 
+async def upload_avatar(uid: str, file: UploadFile) -> tuple[str, str]:
+    """Validate and upload a single profile photo, returning (public_url, path).
+
+    Same pipeline as review photos — JPEG only, ≤MAX_PHOTO_BYTES, EXIF stripped.
+    Stored under users/{uid}/avatar/ so stale avatars can be pruned by prefix.
+    """
+    data = await file.read()
+    if len(data) > settings.MAX_PHOTO_BYTES:
+        raise PhotoTooLarge()
+    _validate_image_content(data)
+    data = _strip_exif(data)
+
+    path = f"users/{uid}/avatar/{uuid4()}.jpg"
+    await asyncio.to_thread(_upload_one_sync, path, data)
+    return _public_url(path), path
+
+
+async def delete_avatar_blobs(uid: str, keep_path: str | None = None):
+    """Best-effort delete of a user's avatar blobs, optionally keeping one.
+
+    Called after a new avatar is uploaded to prune the previous one(s). Deletes
+    by prefix (users/{uid}/avatar/) so it doesn't depend on parsing stored URLs.
+    """
+
+    def _delete_prefix_sync(prefix: str):
+        for blob in bucket.list_blobs(prefix=prefix):
+            if keep_path is not None and blob.name == keep_path:
+                continue
+            blob.delete()
+
+    try:
+        await asyncio.to_thread(_delete_prefix_sync, f"users/{uid}/avatar/")
+    except Exception as e:
+        log.warning("avatar blob cleanup failed", extra={"uid": uid, "error": str(e)})
+
+
 async def delete_review_blobs(review_id: str):
     """Best-effort delete of every photo stored under a review's prefix.
 

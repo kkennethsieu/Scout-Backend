@@ -14,7 +14,7 @@ from app.schemas.error import ErrorResponse
 from app.schemas.pagination import PaginatedReviews
 from app.schemas.review import ReviewBase, ReviewResponse
 from app.schemas.spot import SpotResponse
-from app.schemas.user import UserResponse
+from app.schemas.user import UserResponse, UserUpdate
 
 
 class TestReviewBaseValidation:
@@ -121,6 +121,53 @@ class TestUserResponseSchema:
             created_at=datetime.now(timezone.utc),
         )
         assert user.photo_url is None
+
+    def test_notification_prefs_default_true(self):
+        user = UserResponse(
+            id="abc123",
+            email="test@example.com",
+            display_name="Test User",
+            photo_url=None,
+            created_at=datetime.now(timezone.utc),
+        )
+        assert user.email_notifications is True
+        assert user.push_notifications is True
+
+
+class TestUserUpdateToDict:
+    """Partial-update semantics of UserUpdate.to_update_dict() under multipart."""
+
+    def test_unset_fields_omitted(self):
+        """Nothing sent → empty update dict (leave everything unchanged)."""
+        assert UserUpdate().to_update_dict() == {}
+
+    def test_blank_location_clears_to_none(self):
+        """Blank/whitespace home_city/home_country clear the field to None."""
+        u = UserUpdate(home_city="  ", home_country="")
+        d = u.to_update_dict()
+        assert d == {"home_city": None, "home_country": None}
+
+    def test_location_values_set(self):
+        d = UserUpdate(home_city="Kyoto", home_country="Japan").to_update_dict()
+        assert d == {"home_city": "Kyoto", "home_country": "Japan"}
+
+    def test_display_name_set_but_blank_dropped(self):
+        assert UserUpdate(display_name="Ansel").to_update_dict() == {"display_name": "Ansel"}
+        # Blank display_name is not cleared (non-nullable) — it's dropped entirely.
+        assert UserUpdate(display_name="   ").to_update_dict() == {}
+
+    def test_notification_booleans(self):
+        d = UserUpdate(email_notifications=False, push_notifications=True).to_update_dict()
+        assert d == {"email_notifications": False, "push_notifications": True}
+        # Absent booleans are omitted (None → leave unchanged).
+        assert UserUpdate(email_notifications=True).to_update_dict() == {
+            "email_notifications": True
+        }
+
+    def test_photo_never_in_dict(self):
+        """photo is handled by the router, never in the Firestore merge dict."""
+        d = UserUpdate(home_city="X").to_update_dict()
+        assert "photo" not in d
 
 
 class TestSpotResponseSchema:

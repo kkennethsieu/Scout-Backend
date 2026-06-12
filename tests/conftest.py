@@ -117,7 +117,8 @@ def clean_state():
     try:
         from app.core.firebase import bucket
 
-        for blob in bucket.list_blobs(prefix="reviews/"):
-            blob.delete()
+        for prefix in ("reviews/", "users/"):
+            for blob in bucket.list_blobs(prefix=prefix):
+                blob.delete()
     except Exception:
         pass  # Emulator might not be running (unit tests)

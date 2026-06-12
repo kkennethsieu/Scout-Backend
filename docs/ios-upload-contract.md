@@ -13,16 +13,28 @@ returns a `4xx` with a `code` field (see [Errors](#errors)).
 
 ## Endpoints
 
-| Purpose                                       | Method | Path                       |
-| :-------------------------------------------- | :----- | :------------------------- |
-| Add a review to an existing spot              | `POST` | `/spots/{spot_id}/reviews` |
-| Create a new spot + its first review (atomic) | `POST` | `/spots/with-review`       |
+| Purpose                                       | Method  | Path                       |
+| :-------------------------------------------- | :------ | :------------------------- |
+| Add a review to an existing spot              | `POST`  | `/spots/{spot_id}/reviews` |
+| Create a new spot + its first review (atomic) | `POST`  | `/spots/with-review`       |
+| Update own profile (incl. avatar)             | `PATCH` | `/users/me`                |
 
 - **Content-Type:** `multipart/form-data` (flat — no nested JSON object).
 - **Auth:** `Authorization: Bearer <Firebase ID token>` on every request.
 - **Success:** `201 Created`.
   - `/spots/{spot_id}/reviews` → returns a `Review`.
   - `/spots/with-review` → returns `{ "spot": Spot, "review": Review }`.
+  - `PATCH /users/me` → returns the updated `User` (`200 OK`).
+
+### Profile photo (`PATCH /users/me`)
+
+The profile avatar follows the **same client-side preparation as review photos**
+(HEIC → downscaled JPEG, ≤ 10 MB, EXIF irrelevant — the server strips it). The
+only differences: it's a **single** image sent under the field name **`photo`**
+(not `photos`), and it's **optional** — omit the part to leave the existing avatar
+untouched. The other profile fields (`display_name`, `home_city`, `home_country`,
+`email_notifications`, `push_notifications`) are plain form fields in the same
+request; `email` is read-only and ignored.
 
 ---
 
