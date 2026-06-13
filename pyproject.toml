@@ -28,6 +28,11 @@ dev = [
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+# Only `app` is the Python package. Restrict discovery so non-code top-level
+# dirs (e.g. public/ for Firebase Hosting) don't trip flat-layout auto-discovery.
+include = ["app*"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
