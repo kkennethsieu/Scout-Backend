@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str | None = None
     ENV: Literal["dev", "prod", "test"] = "dev"
     CORS_ORIGINS: list[str] = ["*"]
+    # Legal documents — hosted on Firebase Hosting. Env-overridable so a future
+    # custom domain needs no code change. Surfaced to the client via GET /legal.
+    PRIVACY_POLICY_URL: str = "https://scout-497021.web.app/privacy"
+    TERMS_OF_SERVICE_URL: str = "https://scout-497021.web.app/terms"
+    # ISO date the legal documents were last revised (shown by GET /legal).
+    LEGAL_UPDATED_AT: str = "2026-06-12"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
