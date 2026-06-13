@@ -87,6 +87,7 @@ make lint
 | Method | Path | Auth | Purpose |
 | :--- | :--- | :--- | :--- |
 | **GET** | `/health` | — | Liveness check (Cloud Run) |
+| **GET** | `/legal` | — | Public links to the hosted privacy policy + terms of service |
 | **GET** | `/users/me` | ✓ | Fetch or initialize current user doc (read-through) |
 | **PATCH** | `/users/me` | ✓ | Update own profile (multipart): `display_name`, `home_city`, `home_country`, notification prefs, optional profile `photo`. Partial update; `email` is read-only |
 | **GET** | `/spots` | ✓ | Find nearby spots within radius (lat/lng/radius_km) |
@@ -138,3 +139,21 @@ Reviews are sent as flat **multipart/form-data** (a Pydantic form-model binds th
 - **Text fields** `notes`, `gear_recommendations`, `composition_hints` are capped at 2000 chars.
 
 > **iOS clients:** see [docs/ios-upload-contract.md](docs/ios-upload-contract.md) for the full client-side contract, including the required **HEIC → JPEG** transcode, multipart encoding rules, a Swift `URLSession` reference implementation, and error handling.
+
+## Legal pages (privacy policy & terms)
+
+The privacy policy and terms of service are static pages in `public/`, served via
+**Firebase Hosting**. The client fetches their URLs from `GET /legal` (public, no auth)
+rather than hardcoding them, so they can be repointed (e.g. to a custom domain) by setting
+`PRIVACY_POLICY_URL` / `TERMS_OF_SERVICE_URL` / `LEGAL_UPDATED_AT` env vars — no app release needed.
+
+Deploy the pages:
+```bash
+make deploy-hosting   # firebase deploy --only hosting --project scout-497021
+```
+Default URLs: `https://scout-497021.web.app/privacy` and `/terms`.
+
+> The page content in `public/privacy.html` / `public/terms.html` is a **starter template, not
+> legal advice** — review it and fill the `[BRACKETED]` placeholders (operator, contact email,
+> effective date, jurisdiction) before launch. The privacy policy URL also goes into App Store
+> Connect metadata.

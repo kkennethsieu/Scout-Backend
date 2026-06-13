@@ -1,4 +1,4 @@
-.PHONY: dev dev-device emulators seed test lint deploy-dev
+.PHONY: dev dev-device emulators seed test lint deploy-dev deploy-hosting
 
 emulators:
 	firebase emulators:start --project=scout-test
@@ -25,6 +25,10 @@ test:
 lint:
 	ruff check app tests
 	ruff format --check app tests
+
+# Deploy the static legal pages (privacy / terms) to Firebase Hosting.
+deploy-hosting:
+	firebase deploy --only hosting --project scout-497021
 
 deploy-dev:
 	gcloud run deploy scout-backend-dev \
