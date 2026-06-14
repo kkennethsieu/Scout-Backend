@@ -21,6 +21,25 @@ class ReviewNotFound(DomainError):
         super().__init__(404, "REVIEW_NOT_FOUND", "Review not found")
 
 
+class ListNotFound(DomainError):
+    def __init__(self):
+        super().__init__(404, "LIST_NOT_FOUND", "List not found")
+
+
+class FavoritesProtected(DomainError):
+    def __init__(self):
+        super().__init__(
+            400,
+            "FAVORITES_PROTECTED",
+            "The Favorites list cannot be renamed or deleted.",
+        )
+
+
+class ListLimitReached(DomainError):
+    def __init__(self, limit: int):
+        super().__init__(400, "LIST_LIMIT_REACHED", f"You can have at most {limit} lists.")
+
+
 class UserNotFound(DomainError):
     def __init__(self):
         super().__init__(404, "USER_NOT_FOUND", "User not found")

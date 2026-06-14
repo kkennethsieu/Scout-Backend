@@ -90,13 +90,35 @@ def _anonymize_reviews(uid: str) -> None:
         batch.commit()
 
 
+def _delete_lists(uid: str) -> None:
+    """Hard-delete the user's saved-lists subcollection.
+
+    Firestore does NOT cascade-delete subcollections when the parent user doc is
+    deleted, so the lists (including Favorites) would be orphaned otherwise.
+    Lists are private to the user — unlike reviews they aren't community content —
+    so they're removed outright. Batched under the 500-op limit.
+    """
+    batch = db.batch()
+    pending = 0
+    for doc in db.collection("users").document(uid).collection("lists").stream():
+        batch.delete(doc.reference)
+        pending += 1
+        if pending == _BATCH_LIMIT:
+            batch.commit()
+            batch = db.batch()
+            pending = 0
+    if pending:
+        batch.commit()
+
+
 async def delete_account(uid: str) -> None:
     """
     Delete the caller's account (right-to-erasure), preserving community data.
 
     1. Anonymize the user's reviews (reassign user_id → DELETED_USER_ID).
-    2. Hard-delete the user doc (the PII: email, display_name, photo_url).
-    3. Delete the Firebase Auth user via the Admin SDK.
+    2. Delete the user's saved-lists subcollection (no Firestore cascade).
+    3. Hard-delete the user doc (the PII: email, display_name, photo_url).
+    4. Delete the Firebase Auth user via the Admin SDK.
 
     Firestore work runs before the Auth delete so the PII removal is the durable
     part; every step is idempotent, so a client retry after a transient Auth
@@ -104,6 +126,7 @@ async def delete_account(uid: str) -> None:
     """
     try:
         _anonymize_reviews(uid)
+        _delete_lists(uid)
         db.collection("users").document(uid).delete()
     except GoogleAPICallError as e:
         log.error("Account deletion (Firestore) failed: %s", str(e))

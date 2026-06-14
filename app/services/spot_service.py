@@ -3,10 +3,15 @@
 import base64
 import binascii
 
+from google.cloud.firestore_v1.field_path import FieldPath
+
 from app.core.exceptions import InvalidCursor, SpotNotFound
 from app.core.firebase import db
 from app.services import spot_cache
 from app.services.geo import bounding_box, haversine_km
+
+# Firestore caps an `in` filter at 30 values.
+_IN_QUERY_LIMIT = 30
 
 
 def _encode_cursor(distance_km: float, spot_id: str) -> str:
@@ -130,3 +135,24 @@ async def get_spot(spot_id: str) -> dict:
     data = snap.to_dict()
     data["id"] = snap.id
     return data
+
+
+def get_spots_by_ids(ids: list[str]) -> dict[str, dict]:
+    """Batch-resolve spot ids to spot dicts. Returns {id: spot} for the ids that
+    still exist (a spot is deleted when its last review is removed, so some ids
+    in a saved list may resolve to nothing — those are simply omitted).
+
+    Chunks ids into Firestore's 30-value `in` limit. Synchronous (Firestore SDK
+    is sync); callers wrap it in asyncio.to_thread if they're on the hot path.
+    """
+    found: dict[str, dict] = {}
+    if not ids:
+        return found
+    col = db.collection("spots")
+    for start in range(0, len(ids), _IN_QUERY_LIMIT):
+        chunk = ids[start : start + _IN_QUERY_LIMIT]
+        for doc in col.where(FieldPath.document_id(), "in", chunk).stream():
+            data = doc.to_dict()
+            data["id"] = doc.id
+            found[doc.id] = data
+    return found
