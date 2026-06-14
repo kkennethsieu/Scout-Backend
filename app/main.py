@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import legal, reviews, spots, users
+from app.api.v1 import legal, lists, reviews, spots, users
 from app.core.config import settings
 from app.core.exceptions import DomainError
 from app.core.firebase import init_firebase
@@ -81,4 +81,5 @@ async def health():
 app.include_router(spots.router)
 app.include_router(reviews.router)
 app.include_router(users.router)
+app.include_router(lists.router)
 app.include_router(legal.router)

@@ -1,0 +1,258 @@
+"""Integration tests for saved lists — /users/me/lists and spot membership.
+
+Seeds spots directly in the Firestore emulator, then drives the HTTP API.
+"""
+
+from datetime import datetime, timezone
+
+
+def _seed_spot(spot_id, name, lat=34.05, lng=-118.24, photo_url=None):
+    """Seed a spot in the emulator. Optional photo_url populates the cover thumbnail."""
+    from app.core.firebase import db
+    from app.services.aggregates import empty_aggregates
+
+    data = {
+        "name": name,
+        "public_lat": lat,
+        "public_lng": lng,
+        "city": "Los Angeles",
+        "admin_area": "California",
+        "country": "United States",
+        "created_at": datetime.now(timezone.utc),
+        **empty_aggregates(),
+    }
+    if photo_url:
+        data["recent_review_photos"] = [
+            {"review_id": "r1", "photo_url": photo_url, "created_at": datetime.now(timezone.utc)}
+        ]
+    db.collection("spots").document(spot_id).set(data)
+
+
+class TestListOverview:
+    def test_favorites_auto_created_and_first(self, client, auth_headers):
+        r = client.get("/users/me/lists", headers=auth_headers)
+        assert r.status_code == 200
+        lists = r.json()
+        assert len(lists) == 1
+        assert lists[0]["id"] == "favorites"
+        assert lists[0]["name"] == "Favorites"
+        assert lists[0]["spot_count"] == 0
+        assert lists[0]["cover_photo_url"] is None
+        assert lists[0]["is_system"] is True
+
+    def test_custom_list_not_system(self, client, auth_headers):
+        client.post("/users/me/lists", json={"name": "Trip"}, headers=auth_headers)
+        lists = client.get("/users/me/lists", headers=auth_headers).json()
+        by_name = {item["name"]: item for item in lists}
+        assert by_name["Favorites"]["is_system"] is True
+        assert by_name["Trip"]["is_system"] is False
+
+    def test_favorites_always_first(self, client, auth_headers):
+        client.post("/users/me/lists", json={"name": "Aaa Early"}, headers=auth_headers)
+        r = client.get("/users/me/lists", headers=auth_headers)
+        lists = r.json()
+        assert lists[0]["id"] == "favorites"
+        assert {item["name"] for item in lists} == {"Favorites", "Aaa Early"}
+
+
+class TestListCrud:
+    def test_create_list(self, client, auth_headers):
+        r = client.post("/users/me/lists", json={"name": "Roadtrip"}, headers=auth_headers)
+        assert r.status_code == 201
+        body = r.json()
+        assert body["name"] == "Roadtrip"
+        assert body["spot_count"] == 0
+        assert body["id"] != "favorites"
+        assert body["description"] is None  # optional, defaults to null
+
+    def test_create_with_description(self, client, auth_headers):
+        r = client.post(
+            "/users/me/lists",
+            json={"name": "Roadtrip", "description": "West coast sunsets"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 201
+        assert r.json()["description"] == "West coast sunsets"
+
+    def test_update_description_and_clear(self, client, auth_headers):
+        lid = client.post("/users/me/lists", json={"name": "Trip"}, headers=auth_headers).json()[
+            "id"
+        ]
+        # Set it.
+        r = client.patch(
+            f"/users/me/lists/{lid}", json={"description": "desc"}, headers=auth_headers
+        )
+        assert r.json()["description"] == "desc"
+        # Renaming alone leaves the description untouched (not sent).
+        r = client.patch(f"/users/me/lists/{lid}", json={"name": "Trip2"}, headers=auth_headers)
+        assert r.json()["name"] == "Trip2"
+        assert r.json()["description"] == "desc"
+        # Blank description clears it.
+        r = client.patch(f"/users/me/lists/{lid}", json={"description": ""}, headers=auth_headers)
+        assert r.json()["description"] is None
+
+    def test_create_rejects_blank_name(self, client, auth_headers):
+        r = client.post("/users/me/lists", json={"name": ""}, headers=auth_headers)
+        assert r.status_code == 400
+
+    def test_rename_list(self, client, auth_headers):
+        lid = client.post("/users/me/lists", json={"name": "Old"}, headers=auth_headers).json()[
+            "id"
+        ]
+        r = client.patch(f"/users/me/lists/{lid}", json={"name": "New"}, headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json()["name"] == "New"
+
+    def test_delete_list(self, client, auth_headers):
+        lid = client.post("/users/me/lists", json={"name": "Temp"}, headers=auth_headers).json()[
+            "id"
+        ]
+        assert client.delete(f"/users/me/lists/{lid}", headers=auth_headers).status_code == 204
+        names = {item["id"] for item in client.get("/users/me/lists", headers=auth_headers).json()}
+        assert lid not in names
+
+    def test_rename_missing_list_404(self, client, auth_headers):
+        r = client.patch("/users/me/lists/nope", json={"name": "X"}, headers=auth_headers)
+        assert r.status_code == 404
+        assert r.json()["code"] == "LIST_NOT_FOUND"
+
+    def test_favorites_rename_protected(self, client, auth_headers):
+        r = client.patch("/users/me/lists/favorites", json={"name": "Nope"}, headers=auth_headers)
+        assert r.status_code == 400
+        assert r.json()["code"] == "FAVORITES_PROTECTED"
+
+    def test_favorites_delete_protected(self, client, auth_headers):
+        r = client.delete("/users/me/lists/favorites", headers=auth_headers)
+        assert r.status_code == 400
+        assert r.json()["code"] == "FAVORITES_PROTECTED"
+
+
+class TestMembership:
+    def test_add_and_count(self, client, auth_headers):
+        _seed_spot("s1", "Spot 1")
+        r = client.put("/users/me/lists/favorites/spots/s1", headers=auth_headers)
+        assert r.status_code == 204
+        fav = client.get("/users/me/lists", headers=auth_headers).json()[0]
+        assert fav["spot_count"] == 1
+
+    def test_add_is_idempotent(self, client, auth_headers):
+        _seed_spot("s1", "Spot 1")
+        client.put("/users/me/lists/favorites/spots/s1", headers=auth_headers)
+        client.put("/users/me/lists/favorites/spots/s1", headers=auth_headers)
+        fav = client.get("/users/me/lists", headers=auth_headers).json()[0]
+        assert fav["spot_count"] == 1  # no drift
+
+    def test_remove_is_idempotent(self, client, auth_headers):
+        _seed_spot("s1", "Spot 1")
+        client.put("/users/me/lists/favorites/spots/s1", headers=auth_headers)
+        assert (
+            client.delete("/users/me/lists/favorites/spots/s1", headers=auth_headers).status_code
+            == 204
+        )
+        # Second remove is a no-op, still 204, count stays 0.
+        client.delete("/users/me/lists/favorites/spots/s1", headers=auth_headers)
+        fav = client.get("/users/me/lists", headers=auth_headers).json()[0]
+        assert fav["spot_count"] == 0
+
+    def test_add_nonexistent_spot_404(self, client, auth_headers):
+        r = client.put("/users/me/lists/favorites/spots/ghost", headers=auth_headers)
+        assert r.status_code == 404
+        assert r.json()["code"] == "SPOT_NOT_FOUND"
+
+    def test_add_to_missing_list_404(self, client, auth_headers):
+        _seed_spot("s1", "Spot 1")
+        r = client.put("/users/me/lists/nope/spots/s1", headers=auth_headers)
+        assert r.status_code == 404
+        assert r.json()["code"] == "LIST_NOT_FOUND"
+
+    def test_cover_derived_from_newest_spot(self, client, auth_headers):
+        _seed_spot("s1", "Spot 1", photo_url="https://example.com/a.jpg")
+        _seed_spot("s2", "Spot 2", photo_url="https://example.com/b.jpg")
+        client.put("/users/me/lists/favorites/spots/s1", headers=auth_headers)
+        client.put("/users/me/lists/favorites/spots/s2", headers=auth_headers)
+        fav = client.get("/users/me/lists", headers=auth_headers).json()[0]
+        # Newest spot (s2) drives the cover.
+        assert fav["cover_photo_url"] == "https://example.com/b.jpg"
+
+
+class TestListSpots:
+    def test_newest_first_and_skips_missing(self, client, auth_headers):
+        _seed_spot("s1", "Spot 1")
+        _seed_spot("s2", "Spot 2")
+        client.put("/users/me/lists/favorites/spots/s1", headers=auth_headers)
+        client.put("/users/me/lists/favorites/spots/s2", headers=auth_headers)
+        # Delete s1's underlying spot doc → it should be skipped on resolution.
+        from app.core.firebase import db
+
+        db.collection("spots").document("s1").delete()
+
+        r = client.get("/users/me/lists/favorites/spots", headers=auth_headers)
+        assert r.status_code == 200
+        items = r.json()["items"]
+        assert [s["id"] for s in items] == ["s2"]  # newest first, missing skipped
+
+    def test_pagination(self, client, auth_headers):
+        for i in range(5):
+            _seed_spot(f"s{i}", f"Spot {i}")
+            client.put(f"/users/me/lists/favorites/spots/s{i}", headers=auth_headers)
+
+        seen, cursor, pages = [], None, 0
+        while True:
+            params = {"limit": 2}
+            if cursor:
+                params["cursor"] = cursor
+            r = client.get("/users/me/lists/favorites/spots", params=params, headers=auth_headers)
+            assert r.status_code == 200
+            body = r.json()
+            seen.extend(s["id"] for s in body["items"])
+            cursor = body["next_cursor"]
+            pages += 1
+            if cursor is None or pages > 10:
+                break
+        assert pages == 3
+        assert seen == ["s4", "s3", "s2", "s1", "s0"]  # newest first, no gaps
+
+    def test_list_spots_missing_list_404(self, client, auth_headers):
+        r = client.get("/users/me/lists/nope/spots", headers=auth_headers)
+        assert r.status_code == 404
+
+
+class TestSetMembership:
+    def test_set_membership_diffs(self, client, auth_headers):
+        _seed_spot("s1", "Spot 1")
+        a = client.post("/users/me/lists", json={"name": "A"}, headers=auth_headers).json()["id"]
+        b = client.post("/users/me/lists", json={"name": "B"}, headers=auth_headers).json()["id"]
+
+        # Put s1 into favorites + A.
+        r = client.patch(
+            "/users/me/spots/s1/lists",
+            json={"list_ids": ["favorites", a]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        counts = {item["id"]: item["spot_count"] for item in r.json()}
+        assert counts["favorites"] == 1
+        assert counts[a] == 1
+        assert counts[b] == 0
+
+        # Now move membership to just B — favorites and A get removed, B added.
+        r = client.patch("/users/me/spots/s1/lists", json={"list_ids": [b]}, headers=auth_headers)
+        counts = {item["id"]: item["spot_count"] for item in r.json()}
+        assert counts["favorites"] == 0
+        assert counts[a] == 0
+        assert counts[b] == 1
+
+    def test_set_membership_unknown_list_404(self, client, auth_headers):
+        _seed_spot("s1", "Spot 1")
+        r = client.patch(
+            "/users/me/spots/s1/lists",
+            json={"list_ids": ["does-not-exist"]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 404
+        assert r.json()["code"] == "LIST_NOT_FOUND"
+
+
+class TestListAuth:
+    def test_requires_auth(self, client):
+        assert client.get("/users/me/lists").status_code == 401

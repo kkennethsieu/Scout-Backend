@@ -98,11 +98,19 @@ make lint
 | **GET** | `/reviews/{id}` | ✓ | Retrieve detailed info for a single review |
 | **DELETE** | `/reviews/{id}` | ✓ | Delete the caller's own review; reverses spot aggregates (deletes the spot if it was its last review). 403 if not the author |
 | **GET** | `/users/me/reviews` | ✓ | Fetch the current user's submitted reviews paginated |
+| **GET** | `/users/me/lists` | ✓ | All of the caller's saved lists, Favorites first (auto-created) |
+| **POST** | `/users/me/lists` | ✓ | Create a new list (JSON `{ name, description? }`) |
+| **PATCH** | `/users/me/lists/{id}` | ✓ | Edit `name` / `description`. 400 `FAVORITES_PROTECTED` for Favorites |
+| **DELETE** | `/users/me/lists/{id}` | ✓ | Delete a list. 400 `FAVORITES_PROTECTED` for Favorites |
+| **GET** | `/users/me/lists/{id}/spots` | ✓ | Paginated spots in a list, newest first (missing spots skipped) |
+| **PUT** | `/users/me/lists/{id}/spots/{spot_id}` | ✓ | Add a spot to a list (idempotent) |
+| **DELETE** | `/users/me/lists/{id}/spots/{spot_id}` | ✓ | Remove a spot from a list (idempotent) |
+| **PATCH** | `/users/me/spots/{spot_id}/lists` | ✓ | Set the exact set of lists a spot belongs to (JSON `{ list_ids }`); diffed server-side in one transaction |
 
 ---
 
 ## Error Codes
-`SPOT_NOT_FOUND`, `REVIEW_NOT_FOUND`, `USER_NOT_FOUND`, `SPOT_ALREADY_EXISTS`, `REVIEW_ALREADY_EXISTS`, `FORBIDDEN`, `PHOTO_INVALID_FORMAT`, `PHOTO_TOO_LARGE`, `PHOTO_COUNT_INVALID`, `INVALID_ENUM_VALUE`, `INVALID_CURSOR`, `GEOCODING_FAILED`, `INVALID_TOKEN`, `MISSING_TOKEN`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`.
+`SPOT_NOT_FOUND`, `REVIEW_NOT_FOUND`, `USER_NOT_FOUND`, `LIST_NOT_FOUND`, `SPOT_ALREADY_EXISTS`, `REVIEW_ALREADY_EXISTS`, `FAVORITES_PROTECTED`, `LIST_LIMIT_REACHED`, `FORBIDDEN`, `PHOTO_INVALID_FORMAT`, `PHOTO_TOO_LARGE`, `PHOTO_COUNT_INVALID`, `INVALID_ENUM_VALUE`, `INVALID_CURSOR`, `GEOCODING_FAILED`, `INVALID_TOKEN`, `MISSING_TOKEN`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UPSTREAM_UNAVAILABLE`.
 
 `SPOT_ALREADY_EXISTS` (409) carries extra fields beyond `{detail, code}`: `spot_id`, `name`, `distance_m` — so the client can deep-link to the existing spot.
 
@@ -122,6 +130,34 @@ Profile edits are sent as **multipart/form-data** (so the optional avatar can ri
 - **`email` is read-only** — it's the Firebase Auth login identity and is never written from this endpoint.
 - **Partial update:** only the fields you send change. A blank `home_city` / `home_country` clears it (`null`); a blank `display_name` is ignored (it's non-nullable). Omitted notification booleans are left unchanged.
 - **Photo:** when a `photo` part is present it's validated (JPEG, ≤10 MB), EXIF-stripped, uploaded to Cloud Storage under `users/{uid}/avatar/`, and becomes `photo_url`; the previous avatar is pruned. A non-JPEG → 400 `PHOTO_INVALID_FORMAT`.
+
+## Saved Lists
+
+Users can save spots into lists (e.g. "Favorites", "Roadtrip"). Lists are a
+per-user Firestore subcollection — `users/{uid}/lists/{listId}` — so ownership is
+enforced by the path; there's no cross-user access and no owner check.
+
+- **Favorites** lives at the fixed id `favorites`, always exists (auto-created
+  on first read or first membership write — the client never creates it), and
+  **cannot be renamed or deleted** (400 `FAVORITES_PROTECTED`). All other lists
+  get auto-generated ids.
+  Every list carries an **`is_system`** boolean (true only for Favorites) so the
+  client can hide Edit/Delete affordances without hardcoding the `favorites` id.
+- **Description** is an optional free-text field (≤200 chars) on any list. It's
+  partial-update on `PATCH` — omit it to leave it unchanged, send blank/null to
+  clear it.
+- **Membership** is just a spot id appearing in a list's `spot_ids` array
+  (insertion order, newest last). A spot can belong to many lists — no central
+  record. `spot_count` is derived (`len(spot_ids)`); every membership mutation is
+  a read-modify-write **transaction** so the count can't drift, and adds/removes
+  are **idempotent**.
+- **Overview** (`GET /users/me/lists`) returns each list with a derived
+  `cover_photo_url` (the newest spot's cover photo) and `spot_count`, but **not**
+  the raw `spot_ids` array — page the spots via `GET /users/me/lists/{id}/spots`
+  (newest first; spots that have since been deleted are silently skipped).
+- **Multi-list editing:** the iOS "Add to list" sheet should send the full
+  desired set via `PATCH /users/me/spots/{spot_id}/lists` (one transaction that
+  diffs current vs. requested) rather than firing N add/remove calls.
 
 ## Review Submission Contract
 

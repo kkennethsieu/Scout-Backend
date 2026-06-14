@@ -94,6 +94,33 @@ class TestDeleteUser:
         assert spot.exists
         assert spot.to_dict()["review_count"] == 1
 
+    def test_lists_deleted(self, client, auth_with_uid):
+        """The user's saved-lists subcollection is removed (no Firestore cascade)."""
+        from app.core.firebase import db
+
+        headers = auth_with_uid["headers"]
+        uid = auth_with_uid["uid"]
+
+        # Materialize Favorites + a custom list with a saved spot.
+        db.collection("spots").document("s1").set(
+            {
+                "name": "S1",
+                "public_lat": 0.0,
+                "public_lng": 0.0,
+                "city": "X",
+                "admin_area": "Y",
+                "country": "Z",
+            }
+        )
+        client.put("/users/me/lists/favorites/spots/s1", headers=headers)
+        client.post("/users/me/lists", json={"name": "Trip"}, headers=headers)
+        assert len(list(db.collection("users").document(uid).collection("lists").stream())) == 2
+
+        assert client.delete("/users/me", headers=headers).status_code == 204
+
+        remaining = list(db.collection("users").document(uid).collection("lists").stream())
+        assert remaining == []
+
     def test_user_with_no_reviews(self, client, auth_with_uid):
         """A user who never reviewed can still delete → 204."""
         headers = auth_with_uid["headers"]
