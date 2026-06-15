@@ -98,14 +98,12 @@ make lint
 | **GET** | `/reviews/{id}` | ✓ | Retrieve detailed info for a single review |
 | **DELETE** | `/reviews/{id}` | ✓ | Delete the caller's own review; reverses spot aggregates (deletes the spot if it was its last review). 403 if not the author |
 | **GET** | `/users/me/reviews` | ✓ | Fetch the current user's submitted reviews paginated |
-| **GET** | `/users/me/lists` | ✓ | All of the caller's saved lists, Favorites first (auto-created) |
+| **GET** | `/users/me/lists` | ✓ | The caller's saved lists (Favorites first, auto-created) plus a `memberships` map — `{ lists, memberships }` in one snapshot |
 | **POST** | `/users/me/lists` | ✓ | Create a new list (JSON `{ name, description? }`) |
 | **PATCH** | `/users/me/lists/{id}` | ✓ | Edit `name` / `description`. 400 `FAVORITES_PROTECTED` for Favorites |
 | **DELETE** | `/users/me/lists/{id}` | ✓ | Delete a list. 400 `FAVORITES_PROTECTED` for Favorites |
 | **GET** | `/users/me/lists/{id}/spots` | ✓ | Paginated spots in a list, newest first (missing spots skipped) |
-| **PUT** | `/users/me/lists/{id}/spots/{spot_id}` | ✓ | Add a spot to a list (idempotent) |
-| **DELETE** | `/users/me/lists/{id}/spots/{spot_id}` | ✓ | Remove a spot from a list (idempotent) |
-| **PATCH** | `/users/me/spots/{spot_id}/lists` | ✓ | Set the exact set of lists a spot belongs to (JSON `{ list_ids }`); diffed server-side in one transaction |
+| **PATCH** | `/users/me/spots/{spot_id}/lists` | ✓ | Set the exact set of lists a spot belongs to (JSON `{ list_ids }`); diffed server-side in one transaction. The only membership write path; returns the refreshed `{ lists, memberships }` overview |
 
 ---
 
@@ -148,16 +146,22 @@ enforced by the path; there's no cross-user access and no owner check.
   clear it.
 - **Membership** is just a spot id appearing in a list's `spot_ids` array
   (insertion order, newest last). A spot can belong to many lists — no central
-  record. `spot_count` is derived (`len(spot_ids)`); every membership mutation is
-  a read-modify-write **transaction** so the count can't drift, and adds/removes
-  are **idempotent**.
-- **Overview** (`GET /users/me/lists`) returns each list with a derived
-  `cover_photo_url` (the newest spot's cover photo) and `spot_count`, but **not**
-  the raw `spot_ids` array — page the spots via `GET /users/me/lists/{id}/spots`
-  (newest first; spots that have since been deleted are silently skipped).
-- **Multi-list editing:** the iOS "Add to list" sheet should send the full
-  desired set via `PATCH /users/me/spots/{spot_id}/lists` (one transaction that
-  diffs current vs. requested) rather than firing N add/remove calls.
+  record. `spot_count` is derived (`len(spot_ids)`); the single write path is a
+  read-modify-write **transaction** so the count can't drift, and re-sending the
+  same set is **idempotent**.
+- **One write path:** all membership changes — add, remove, across any number of
+  lists — go through `PATCH /users/me/spots/{spot_id}/lists`, which sends the full
+  desired set for one spot and diffs current vs. requested server-side in a single
+  transaction. The iOS "Add to list" sheet (opened from the heart) is the sole
+  caller; there are no per-spot add/remove endpoints.
+- **Overview** (`GET /users/me/lists`) returns `{ lists, memberships }` in one
+  atomic snapshot: each list carries a derived `cover_photo_url` (the newest spot's
+  cover photo) and `spot_count` (but **not** its raw `spot_ids`), while
+  `memberships` maps every list id → its `spot_ids` (all lists, empty → `[]`) so
+  the client can hydrate heart/checkbox state without a second call. `PATCH
+  /users/me/spots/{spot_id}/lists` returns the same shape so the store re-hydrates
+  atomically after each edit. Page a list's full spots via
+  `GET /users/me/lists/{id}/spots` (newest first; deleted spots silently skipped).
 
 ## Review Submission Contract
 

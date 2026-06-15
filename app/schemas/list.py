@@ -51,6 +51,16 @@ class ListResponse(BaseModel):
     updated_at: datetime
 
 
+class ListsOverview(BaseModel):
+    """GET /users/me/lists + PATCH set-membership response — list metadata plus
+    the membership map in one atomic snapshot. The iOS store hydrates from this
+    at launch and after every edit. memberships maps every list_id to its spot_ids
+    (stored order, oldest→newest); empty lists map to []."""
+
+    lists: list[ListResponse]
+    memberships: dict[str, list[str]]
+
+
 class SetMembershipRequest(BaseModel):
     """PATCH /users/me/spots/{spot_id}/lists body — the full desired set of lists
     this spot should belong to. The server diffs against current membership."""

@@ -112,7 +112,7 @@ class TestDeleteUser:
                 "country": "Z",
             }
         )
-        client.put("/users/me/lists/favorites/spots/s1", headers=headers)
+        client.patch("/users/me/spots/s1/lists", json={"list_ids": ["favorites"]}, headers=headers)
         client.post("/users/me/lists", json={"name": "Trip"}, headers=headers)
         assert len(list(db.collection("users").document(uid).collection("lists").stream())) == 2
 
