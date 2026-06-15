@@ -8,17 +8,24 @@ authorization needed — ownership is enforced by the path. The Favorites list
 from fastapi import APIRouter, Depends, Query, Response
 
 from app.api.v1.deps import current_uid
-from app.schemas.list import ListCreate, ListResponse, ListUpdate, SetMembershipRequest
+from app.schemas.list import (
+    ListCreate,
+    ListResponse,
+    ListsOverview,
+    ListUpdate,
+    SetMembershipRequest,
+)
 from app.schemas.pagination import PaginatedSpots
 from app.services import list_service
 
 router = APIRouter(tags=["lists"])
 
 
-@router.get("/users/me/lists", response_model=list[ListResponse])
+@router.get("/users/me/lists", response_model=ListsOverview)
 async def get_lists(uid: str = Depends(current_uid)):
-    """All of the caller's lists, Favorites first. Creates Favorites if missing."""
-    return await list_service.list_lists(uid)
+    """The caller's lists plus the membership map for their saved spots, Favorites
+    first. Creates Favorites if missing."""
+    return await list_service.list_overview(uid)
 
 
 @router.post("/users/me/lists", response_model=ListResponse, status_code=201)
@@ -51,24 +58,11 @@ async def get_list_spots(
     return await list_service.get_list_spots(uid, list_id, limit, cursor)
 
 
-@router.put("/users/me/lists/{list_id}/spots/{spot_id}", status_code=204)
-async def add_spot_to_list(list_id: str, spot_id: str, uid: str = Depends(current_uid)):
-    """Add a spot to a list (idempotent)."""
-    await list_service.add_spot(uid, list_id, spot_id)
-    return Response(status_code=204)
-
-
-@router.delete("/users/me/lists/{list_id}/spots/{spot_id}", status_code=204)
-async def remove_spot_from_list(list_id: str, spot_id: str, uid: str = Depends(current_uid)):
-    """Remove a spot from a list (idempotent)."""
-    await list_service.remove_spot(uid, list_id, spot_id)
-    return Response(status_code=204)
-
-
-@router.patch("/users/me/spots/{spot_id}/lists", response_model=list[ListResponse])
+@router.patch("/users/me/spots/{spot_id}/lists", response_model=ListsOverview)
 async def set_spot_membership(
     spot_id: str, body: SetMembershipRequest, uid: str = Depends(current_uid)
 ):
-    """Set the exact set of lists a spot belongs to (one transaction). Returns
-    the refreshed list overview. Use this from the iOS "Add to list" sheet."""
+    """Set the exact set of lists a spot belongs to (one transaction). Returns the
+    refreshed overview ({lists, memberships}) so the client re-hydrates atomically.
+    Use this from the iOS "Add to list" sheet."""
     return await list_service.set_membership(uid, spot_id, body.list_ids)

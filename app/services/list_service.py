@@ -96,8 +96,13 @@ def _ensure_favorites_doc(uid: str) -> None:
         ref.set(_favorites_seed())
 
 
-async def list_lists(uid: str) -> list[dict]:
-    """All of the user's lists, Favorites first then by created_at ascending.
+async def list_overview(uid: str) -> dict:
+    """All of the user's lists plus the membership map, in one atomic snapshot.
+
+    Returns {"lists": [...], "memberships": {list_id: spot_ids}} — the lists array
+    is Favorites-first then created_at ascending, and memberships maps every list
+    (even empty ones) to its spot_ids so the client can hydrate heart/checkbox
+    state without a second call.
 
     Read-through-creates Favorites if missing, so the client never has to. The
     cover thumbnail for each list is derived from its newest spot's cover photo,
@@ -136,7 +141,11 @@ async def list_lists(uid: str) -> list[dict]:
         return (is_fav, data.get("created_at") or datetime.min.replace(tzinfo=timezone.utc))
 
     ordered = sorted(docs.items(), key=sort_key)
-    return [_to_response(doc_id, data, cover_for(data)) for doc_id, data in ordered]
+    memberships = {doc_id: list(data.get("spot_ids") or []) for doc_id, data in docs.items()}
+    return {
+        "lists": [_to_response(doc_id, data, cover_for(data)) for doc_id, data in ordered],
+        "memberships": memberships,
+    }
 
 
 async def create_list(uid: str, name: str, description: str | None = None) -> dict:
@@ -215,54 +224,7 @@ async def get_list_spots(uid: str, list_id: str, limit: int, cursor: str | None 
     return {"items": items, "limit": limit, "next_cursor": next_cursor}
 
 
-async def add_spot(uid: str, list_id: str, spot_id: str) -> None:
-    """Add a spot to a list (idempotent). 404 if the spot or list doesn't exist."""
-    # Validate the spot exists so a typo'd id can't be saved (raises SpotNotFound).
-    await spot_service.get_spot(spot_id)
-
-    if list_id == FAVORITES_ID:
-        _ensure_favorites_doc(uid)
-
-    ref = _lists_col(uid).document(list_id)
-    transaction = db.transaction()
-
-    @firestore.transactional
-    def _txn(txn):
-        snap = ref.get(transaction=txn)
-        if not snap.exists:
-            raise ListNotFound()
-        spot_ids = list(snap.to_dict().get("spot_ids") or [])
-        if spot_id in spot_ids:
-            return  # idempotent — already present
-        spot_ids.append(spot_id)
-        txn.update(ref, {"spot_ids": spot_ids, "updated_at": _now()})
-
-    _run_txn(_txn, transaction)
-
-
-async def remove_spot(uid: str, list_id: str, spot_id: str) -> None:
-    """Remove a spot from a list (idempotent). 404 if the list doesn't exist."""
-    if list_id == FAVORITES_ID:
-        _ensure_favorites_doc(uid)
-
-    ref = _lists_col(uid).document(list_id)
-    transaction = db.transaction()
-
-    @firestore.transactional
-    def _txn(txn):
-        snap = ref.get(transaction=txn)
-        if not snap.exists:
-            raise ListNotFound()
-        spot_ids = list(snap.to_dict().get("spot_ids") or [])
-        if spot_id not in spot_ids:
-            return  # idempotent — already absent
-        spot_ids.remove(spot_id)
-        txn.update(ref, {"spot_ids": spot_ids, "updated_at": _now()})
-
-    _run_txn(_txn, transaction)
-
-
-async def set_membership(uid: str, spot_id: str, list_ids: list[str]) -> list[dict]:
+async def set_membership(uid: str, spot_id: str, list_ids: list[str]) -> dict:
     """Set the exact set of lists a spot belongs to, in one transaction.
 
     Reads every list, diffs current membership against the requested set, and
@@ -302,7 +264,7 @@ async def set_membership(uid: str, spot_id: str, list_ids: list[str]) -> list[di
             txn.update(d.reference, {"spot_ids": spot_ids, "updated_at": now})
 
     _run_txn(_txn, transaction)
-    return await list_lists(uid)
+    return await list_overview(uid)
 
 
 def _run_txn(fn, transaction) -> None:
