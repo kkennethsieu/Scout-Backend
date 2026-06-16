@@ -99,6 +99,11 @@ class ReviewResponse(ReviewBase):
     city: str
     admin_area: str
     user_id: str
+    # Author identity, joined from the user doc at read time (NOT stored on the
+    # review) so a profile rename/avatar change shows up immediately. None when the
+    # author can't be resolved; "Deleted user" for anonymized (deleted) accounts.
+    author_name: str | None = None
+    author_photo_url: str | None = None
     photo_urls: list[str] = Field(..., min_length=1, max_length=10)
     created_at: datetime
 
