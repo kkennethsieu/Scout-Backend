@@ -65,7 +65,7 @@ class PhotoTooLarge(DomainError):
 
 class PhotoCountInvalid(DomainError):
     def __init__(self):
-        super().__init__(400, "PHOTO_COUNT_INVALID", "Must include 1–10 photos")
+        super().__init__(400, "PHOTO_COUNT_INVALID", "Must include 1–5 photos")
 
 
 class InvalidEnumValue(DomainError):
