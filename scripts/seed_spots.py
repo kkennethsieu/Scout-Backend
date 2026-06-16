@@ -14,7 +14,7 @@ name alone returns nothing; if absent the seeder derives a query from the name.
 Enum string values must match the API schema exactly (see BEST_TIMES /
 ACCESS_LEVELS / CROWD_LEVELS / SEASONS in scripts/seed_real_data.py).
 
-STATUS: first batch of 10 for sanity check. More to be appended.
+STATUS: full curated set of real LA-area spots.
 """
 
 SEED_SPOTS = [
@@ -401,5 +401,821 @@ SEED_SPOTS = [
         "permit": False,
         "drone": False,
         "tripod": True,
+    },
+    {
+        "name": "Lake Hollywood Park",
+        "geocode_query": "Lake Hollywood Park, Los Angeles, CA",
+        "photo_query": "Hollywood Sign Los Angeles hills",
+        "notes": [
+            "This is the spot for a clean unobstructed Hollywood Sign shot without "
+            "doing the whole hike.",
+            "Bring a long lens, the sign is farther than it looks and you'll want to "
+            "fill the frame.",
+            "Morning light hits the sign straight on, afternoon backlights it which "
+            "can be moody if that's your thing.",
+            "It's a small park in a residential street so parking is limited, just "
+            "be respectful of the neighbors.",
+            "The grassy hill and the trees make a nice natural frame around the sign.",
+            "Weekends get busy with tourists doing the same shot, mornings are way "
+            "calmer.",
+            "Haze can soften the sign on bad air days, a clear day after rain is "
+            "chef's kiss.",
+        ],
+        "gear": [
+            "A 70 to 200 or longer to really pull the sign in.",
+            "A polarizer helps cut through the haze a bit.",
+            "A tripod if you want tack sharp shots at full zoom.",
+        ],
+        "composition": [
+            "Frame the sign through the trees for a natural border.",
+            "Use the green hillside as foreground leading up to the sign.",
+            "Go tight and let the letters fill the whole frame.",
+        ],
+        "best_times": ["GoldenHour", "Sunrise", "Midday"],
+        "best_seasons": ["Winter", "Spring", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Runyon Canyon Park",
+        "geocode_query": "Runyon Canyon Park, Los Angeles, CA",
+        "photo_query": "Los Angeles hills hike city view",
+        "notes": [
+            "Quick steep hike with a big payoff, you get the whole city laid out "
+            "from the top.",
+            "Go at sunrise to beat the heat and the crowds, this place is packed by "
+            "mid morning.",
+            "The view from the upper ridge stretches all the way to downtown on a "
+            "clear day.",
+            "It's mostly exposed with no shade, so a hazy marine layer morning "
+            "actually gives softer light.",
+            "Lots of dogs and runners, it's a social trail more than a quiet one.",
+            "Blue hour from the top with the city lights coming on is underrated.",
+            "Wear real shoes, the dirt gets loose and dusty on the steep parts.",
+        ],
+        "gear": [
+            "A wide lens for the sweeping city panorama.",
+            "A tripod for blue hour if you stay past sunset.",
+            "A polarizer to punch up a hazy sky.",
+        ],
+        "composition": [
+            "Use the trail itself as a leading line down toward the city.",
+            "Layer the ridge lines with downtown in the far distance.",
+            "Get a person on the ridge for scale against the skyline.",
+        ],
+        "best_times": ["Sunrise", "GoldenHour", "BlueHour"],
+        "best_seasons": ["Fall", "Winter", "YearRound"],
+        "access_level": "Moderate",
+        "crowd_level": "Crowded",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "The Getty Center",
+        "geocode_query": "The Getty Center, Los Angeles, CA",
+        "notes": [
+            "The travertine architecture is the star here, all clean lines and warm "
+            "stone that glows at golden hour.",
+            "The Central Garden is great but the architecture and the city views from "
+            "the terraces are what I keep coming back for.",
+            "Admission is free, you just pay for parking, and the tram ride up is "
+            "part of the fun.",
+            "Overcast days are actually nice for the stone, harsh midday sun makes "
+            "the white surfaces blow out.",
+            "Look for shadows and geometry, the whole place is a playground of "
+            "angles and light.",
+            "On a clear day you can see all the way to the ocean from the south "
+            "terrace.",
+            "They close in the evening so you can't really shoot full night, but "
+            "late afternoon light is gorgeous.",
+        ],
+        "gear": [
+            "A 24 to 70 covers the architecture and the garden.",
+            "A polarizer for the sky against all that pale stone.",
+            "A wide lens for the big symmetrical courtyard shots.",
+        ],
+        "composition": [
+            "Use the travertine walls as strong geometric leading lines.",
+            "Frame the city view through an architectural opening.",
+            "Find symmetry in the courtyards and shoot it dead center.",
+        ],
+        "best_times": ["GoldenHour", "Midday", "Sunrise"],
+        "best_seasons": ["YearRound", "Spring", "Fall"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0, 0.0, 25.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
+    },
+    {
+        "name": "Union Station",
+        "geocode_query": "Union Station, Los Angeles, CA",
+        "photo_query": "Union Station Los Angeles",
+        "notes": [
+            "The old waiting hall is stunning, those big leather chairs and the "
+            "light pouring through the tall windows.",
+            "Early morning has the best light through the windows and the fewest "
+            "commuters in your frame.",
+            "It mixes Spanish and Art Deco styles and the details are everywhere, "
+            "look up at the ceilings.",
+            "The courtyards and archways outside are quieter and great for warm "
+            "afternoon light.",
+            "Be mindful it's a working station, don't block walkways with a tripod "
+            "during rush hour.",
+            "The long ticketing corridor makes an amazing symmetrical leading line.",
+            "It's a popular film location so it just looks cinematic naturally.",
+        ],
+        "gear": [
+            "A wide lens for the grand hall and the corridors.",
+            "A tripod for low light interiors if it's not crowded.",
+            "A fast prime for handheld shots in the dim corners.",
+        ],
+        "composition": [
+            "Shoot the long corridor straight on for perfect symmetry.",
+            "Catch a beam of window light falling across the waiting hall.",
+            "Frame people small under the big archways for scale.",
+        ],
+        "best_times": ["GoldenHour", "Sunrise", "Midday"],
+        "best_seasons": ["YearRound", "Winter", "Fall"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
+    },
+    {
+        "name": "Watts Towers",
+        "geocode_query": "Watts Towers, Los Angeles, CA",
+        "photo_query": "mosaic tower sculpture colorful",
+        "notes": [
+            "Wild folk art towers covered in tile, glass, and shells, there's "
+            "nothing else like it in the city.",
+            "The light through the mosaic gaps makes amazing patterns, mid morning is "
+            "great for that.",
+            "Get in tight on the details, the textures and embedded objects are the "
+            "real story here.",
+            "It's in a quieter neighborhood, just be respectful and aware like "
+            "anywhere.",
+            "A blue sky behind the towers makes the colored glass really pop.",
+            "Tours run on a schedule so check before you go if you want inside the "
+            "fence.",
+            "Backlight through the colored glass at the right angle is magic.",
+        ],
+        "gear": [
+            "A macro or close focusing lens for the mosaic details.",
+            "A polarizer to saturate the glass and tile against the sky.",
+            "A wide lens to get a full tower top to bottom.",
+        ],
+        "composition": [
+            "Shoot up the tower with a blue sky behind the colored glass.",
+            "Fill the frame with the mosaic texture for an abstract.",
+            "Catch light passing through a gap in the tilework.",
+        ],
+        "best_times": ["Midday", "GoldenHour", "Sunrise"],
+        "best_seasons": ["YearRound", "Summer", "Spring"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0, 0.0, 7.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Angels Flight Railway",
+        "geocode_query": "Angels Flight Railway, Los Angeles, CA",
+        "photo_query": "Angels Flight Los Angeles funicular orange",
+        "notes": [
+            "The little orange funicular cars are super photogenic, especially the "
+            "two passing each other on the incline.",
+            "Shoot from the bottom looking up the tracks for that classic "
+            "converging line shot.",
+            "It's a quick cheap ride and you can shoot from inside the car looking "
+            "down too.",
+            "Late afternoon the warm light hits the cars and the old station arch "
+            "really nicely.",
+            "Downtown around it has great texture, the Grand Central Market is right "
+            "there.",
+            "It can get a little line on weekends but it moves fast.",
+            "Blue hour with the station sign lit is a fun one.",
+        ],
+        "gear": [
+            "A 24 to 70 is plenty for the cars and the tracks.",
+            "A tripod for blue hour shots of the lit station.",
+            "A polarizer to deepen that orange against the sky.",
+        ],
+        "composition": [
+            "Shoot straight up the tracks so the rails converge.",
+            "Catch both cars as they pass at the midpoint.",
+            "Frame a car under the old Beaux Arts station arch.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Midday"],
+        "best_seasons": ["YearRound", "Fall", "Winter"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0, 1.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
+    },
+    {
+        "name": "Manhattan Beach Pier",
+        "geocode_query": "Manhattan Beach Pier, Manhattan Beach, CA",
+        "notes": [
+            "Clean classic California pier, the round building at the end frames up "
+            "great against a sunset.",
+            "Get there for sunset and shoot the pier silhouette with the sun "
+            "dropping into the water.",
+            "Low tide gives you wet sand reflections of the whole pier, so good.",
+            "The pilings underneath make nice repeating lines and silhouette frames.",
+            "It's a wide open west facing beach so almost every clear evening "
+            "delivers.",
+            "Walk out on the pier for a shot looking back at the coast and the hills.",
+            "Surfers are usually out near the pier and make great foreground "
+            "subjects.",
+        ],
+        "gear": [
+            "A wide lens for the pier and the big sky.",
+            "An ND to smooth the water at sunset.",
+            "A tripod for the blue hour reflections.",
+        ],
+        "composition": [
+            "Silhouette the pier building against the setting sun.",
+            "Use wet sand at low tide to mirror the pier.",
+            "Line up the pilings as a repeating leading line.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Sunrise"],
+        "best_seasons": ["Summer", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Malibu Pier",
+        "geocode_query": "Malibu Pier, Malibu, CA",
+        "notes": [
+            "Iconic Malibu pier with the white buildings, looks amazing in warm "
+            "evening light.",
+            "Shoot from the beach to the side to get the full length of the pier "
+            "with the hills behind.",
+            "Sunrise here is quiet and the light comes up behind the hills onto the "
+            "water.",
+            "Surfers at Surfrider right next door give you endless action foreground.",
+            "Low tide opens up the sand and rocks for foreground interest.",
+            "The pier railings and posts make nice leading lines down its length.",
+            "Parking is right there but fills up on nice weekends.",
+        ],
+        "gear": [
+            "A 24 to 70 for the pier and the beach scenes.",
+            "A longer lens for the surfers.",
+            "An ND and tripod for smooth water long exposures.",
+        ],
+        "composition": [
+            "Run the pier diagonally across the frame with the hills behind.",
+            "Use the posts and railing as a line down the pier.",
+            "Put a surfer in the foreground with the pier beyond.",
+        ],
+        "best_times": ["GoldenHour", "Sunrise", "BlueHour"],
+        "best_seasons": ["Summer", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0, 12.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Leo Carrillo State Beach",
+        "geocode_query": "Leo Carrillo State Beach, Malibu, CA",
+        "photo_query": "Malibu sea cave beach rocks",
+        "notes": [
+            "Sea caves, tide pools, and big rock formations, it's a playground at "
+            "low tide.",
+            "Time it with low tide or you won't be able to get to the caves and "
+            "arches.",
+            "The light coming through the cave openings late in the day is "
+            "incredible.",
+            "Tide pools have little worlds in them, get low with a macro if you're "
+            "into that.",
+            "It's a bit of a drive up the coast but way less crowded than the "
+            "closer beaches.",
+            "Watch the surf around the rocks, sneaker waves are real out here.",
+            "A long exposure smooths the water around the rock stacks beautifully.",
+        ],
+        "gear": [
+            "A wide lens for the caves and the rock formations.",
+            "An ND filter for silky surf around the rocks.",
+            "A microfiber cloth for the inevitable spray.",
+        ],
+        "composition": [
+            "Shoot from inside a cave out toward the lit beach.",
+            "Use a tide pool reflection as foreground at golden hour.",
+            "Frame a rock arch with the surf rolling through.",
+        ],
+        "best_times": ["GoldenHour", "Sunrise", "BlueHour"],
+        "best_seasons": ["Summer", "Fall", "Spring"],
+        "access_level": "Moderate",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0, 3.0, 12.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Abbot Kinney Boulevard",
+        "geocode_query": "Abbot Kinney Boulevard, Venice, CA",
+        "photo_query": "Venice Los Angeles street mural colorful",
+        "notes": [
+            "Murals everywhere and a fun trendy street vibe, great for color and "
+            "street shots.",
+            "The big murals on the side walls are the obvious draw, the light is "
+            "best on them in the morning.",
+            "Lots of cute storefronts and cafes make nice little detail and lifestyle "
+            "frames.",
+            "Weekends are lively and good for street photography if you like people "
+            "in your shots.",
+            "Golden hour down the street gives you warm light and long shadows.",
+            "Keep an eye out, the murals change pretty often so there's always "
+            "something new.",
+            "It's flat and walkable, easy to spend an hour just wandering.",
+        ],
+        "gear": [
+            "A 35 or 50 prime is perfect for street and storefronts.",
+            "A wide lens for the full murals up close.",
+            "Honestly just a phone works great for this one too.",
+        ],
+        "composition": [
+            "Get a person walking past a mural for scale and life.",
+            "Shoot down the street into the warm low sun for long shadows.",
+            "Fill the frame with a mural for a bold color block.",
+        ],
+        "best_times": ["GoldenHour", "Midday", "Sunrise"],
+        "best_seasons": ["YearRound", "Spring", "Summer"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
+    },
+    {
+        "name": "Bronson Canyon",
+        "geocode_query": "Bronson Canyon, Los Angeles, CA",
+        "photo_query": "cave tunnel hike rock Los Angeles",
+        "notes": [
+            "The Batcave tunnel is the draw, an easy walk in and a fun frame "
+            "shooting out the cave mouth.",
+            "Shoot from inside looking out so the dark rock frames the bright "
+            "canyon beyond.",
+            "It's a short flat trail to the caves, totally doable for anyone.",
+            "Midday actually works here since the cave interior is dark either way.",
+            "You can sometimes catch the Hollywood Sign from spots along the trail.",
+            "Quiet on weekday mornings, busier on weekends with families.",
+            "Bring a flashlight if you want to light up the cave walls a bit.",
+        ],
+        "gear": [
+            "A wide lens to get the cave mouth framing the canyon.",
+            "A tripod for the dark to bright exposure balance.",
+            "A fast lens helps inside the dim tunnel.",
+        ],
+        "composition": [
+            "Frame the bright canyon through the dark cave opening.",
+            "Put a person in the cave mouth as a silhouette for scale.",
+            "Use the curved tunnel walls to lead the eye out.",
+        ],
+        "best_times": ["Midday", "GoldenHour", "Sunrise"],
+        "best_seasons": ["Fall", "Winter", "Spring"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Greystone Mansion",
+        "geocode_query": "Greystone Mansion, Beverly Hills, CA",
+        "photo_query": "Tudor mansion garden estate",
+        "notes": [
+            "Gorgeous old Tudor estate with formal gardens, feels like you stepped "
+            "into another era.",
+            "The grounds are free to walk and the architecture plus the gardens give "
+            "you tons to shoot.",
+            "Morning light on the stone facade is beautiful and the gardens are "
+            "quiet then too.",
+            "You can't usually go inside without an event, but the exterior and "
+            "courtyards are the highlight anyway.",
+            "The reflecting areas and stairways make great symmetrical compositions.",
+            "It's a popular photo and film spot so you'll see other shooters around.",
+            "The city view from the upper terrace is a nice bonus.",
+        ],
+        "gear": [
+            "A 24 to 70 for the architecture and garden scenes.",
+            "A wide lens for the full facade.",
+            "A longer lens for compressing garden details.",
+        ],
+        "composition": [
+            "Center the facade for a grand symmetrical frame.",
+            "Use a garden path or stairway as a leading line.",
+            "Frame the mansion through an archway or hedge.",
+        ],
+        "best_times": ["GoldenHour", "Sunrise", "Midday"],
+        "best_seasons": ["Spring", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
+    },
+    {
+        "name": "The Last Bookstore",
+        "geocode_query": "The Last Bookstore, Los Angeles, CA",
+        "photo_query": "bookstore interior books tunnel",
+        "notes": [
+            "The book tunnel and the arches made of books are the iconic shots, it's "
+            "a maze upstairs.",
+            "Go on a weekday morning right when they open to actually have space to "
+            "shoot.",
+            "Upstairs in the labyrinth is where all the fun book sculptures and "
+            "arches are.",
+            "It's dim inside so bump your ISO or bring a fast lens.",
+            "Be courteous, it's a working shop and other people want to browse and "
+            "shoot too.",
+            "The vault room and the little nooks have great character.",
+            "No tripod really, it's too tight and busy, go handheld.",
+        ],
+        "gear": [
+            "A fast prime around f1.8 for the low interior light.",
+            "A wide lens to get the full book arches.",
+            "Steady hands or a high ISO, tripods are tough in there.",
+        ],
+        "composition": [
+            "Shoot straight through the book tunnel for symmetry.",
+            "Frame a person walking under a book arch.",
+            "Fill the frame with stacked book spines for texture.",
+        ],
+        "best_times": ["Midday", "Sunrise", "GoldenHour"],
+        "best_seasons": ["YearRound", "Winter", "Fall"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
+    },
+    {
+        "name": "Grand Park",
+        "geocode_query": "Grand Park, Los Angeles, CA",
+        "photo_query": "Los Angeles City Hall fountain",
+        "notes": [
+            "The pink chairs and the fountain with City Hall behind it is the "
+            "signature downtown frame.",
+            "Blue hour is great here, City Hall lights up and the fountain looks "
+            "dreamy.",
+            "The fountain has a wide pool, get low for reflections of City Hall.",
+            "It's terraced so you can shoot from a few levels for different "
+            "compositions.",
+            "Pretty quiet on weekday evenings, events fill it up otherwise.",
+            "The pink furniture adds a fun pop of color to foreground.",
+            "Long exposure on the fountain at dusk smooths the water nicely.",
+        ],
+        "gear": [
+            "A wide lens for the fountain with City Hall behind.",
+            "A tripod for the blue hour and fountain long exposures.",
+            "An ND if you want to smooth the water in daylight.",
+        ],
+        "composition": [
+            "Line up the fountain with City Hall centered behind it.",
+            "Get low for a City Hall reflection in the fountain pool.",
+            "Use the pink chairs as a colorful foreground anchor.",
+        ],
+        "best_times": ["BlueHour", "GoldenHour", "Night"],
+        "best_seasons": ["YearRound", "Spring", "Fall"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Baldwin Hills Scenic Overlook",
+        "geocode_query": "Baldwin Hills Scenic Overlook, Culver City, CA",
+        "photo_query": "Los Angeles hilltop stairs city view",
+        "notes": [
+            "Big stair climb but the top gives you a huge panorama from downtown all "
+            "the way to the ocean on a clear day.",
+            "The famous stairs themselves make a great shot looking up or down.",
+            "Sunset from the top is the move, the whole basin lights up.",
+            "It's a real workout, those stairs are no joke, bring water.",
+            "Clear days after rain you can see the ocean and downtown in one frame.",
+            "Blue hour up top with the city lights is worth the climb.",
+            "Gets windy at the top so secure a light tripod.",
+        ],
+        "gear": [
+            "A wide lens for the big panorama.",
+            "A 70 to 200 to compress downtown against the foreground.",
+            "A tripod for blue hour, weighted against the wind.",
+        ],
+        "composition": [
+            "Shoot down the long staircase for a dramatic leading line.",
+            "Layer the foreground hills with downtown and the ocean.",
+            "Catch the city lights coming on at blue hour from the top.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Sunrise"],
+        "best_seasons": ["Fall", "Winter", "YearRound"],
+        "access_level": "Difficult",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Kenneth Hahn State Recreation Area",
+        "geocode_query": "Kenneth Hahn State Recreation Area, Los Angeles, CA",
+        "photo_query": "Los Angeles park hilltop skyline view",
+        "notes": [
+            "Underrated park with a hilltop that gives you a clean downtown skyline "
+            "view framed by green.",
+            "The overlook up top is the spot, especially when the grass is green in "
+            "spring.",
+            "Golden hour lights the hills and the skyline sits nicely behind.",
+            "There's a little lotus pond and lake lower down for a different subject.",
+            "Way less crowded than the famous overlooks, easy to find a calm spot.",
+            "Clear winter days give you the sharpest skyline from up here.",
+            "Plenty of parking and easy walking, very low key.",
+        ],
+        "gear": [
+            "A 70 to 200 to compress the skyline behind the hills.",
+            "A wide lens for the green foreground and big sky.",
+            "A tripod for golden and blue hour.",
+        ],
+        "composition": [
+            "Frame the skyline behind a green foreground ridge.",
+            "Use a path or tree line to lead toward downtown.",
+            "Reflect the sky in the lower pond at sunrise.",
+        ],
+        "best_times": ["GoldenHour", "Sunrise", "BlueHour"],
+        "best_seasons": ["Spring", "Winter", "Fall"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0, 6.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Will Rogers State Beach",
+        "geocode_query": "Will Rogers State Beach, Pacific Palisades, CA",
+        "photo_query": "Los Angeles coast beach sunset",
+        "notes": [
+            "Long open beach with the hills curving around, great for wide sunset "
+            "shots.",
+            "Sunset is the obvious time, the sun drops right into the water out "
+            "here.",
+            "Walk toward the bluffs for the coastline curving away into the haze.",
+            "Low tide leaves wet sand that mirrors the sky colors.",
+            "It's big and rarely feels packed, easy to find your own stretch.",
+            "Lifeguard towers make great minimalist subjects against the sky.",
+            "A long exposure of the surf at dusk is calming and clean.",
+        ],
+        "gear": [
+            "A wide lens for the open beach and sky.",
+            "An ND for smooth surf at sunset.",
+            "A tripod for blue hour long exposures.",
+        ],
+        "composition": [
+            "Isolate a lifeguard tower against a colorful sky.",
+            "Use the wet sand to mirror the sunset.",
+            "Let the coastline curve lead off toward the bluffs.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Sunrise"],
+        "best_seasons": ["Summer", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0, 3.0, 12.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Parker Mesa Overlook",
+        "geocode_query": "Parker Mesa Overlook, Topanga, CA",
+        "photo_query": "Topanga coast ocean view",
+        "notes": [
+            "Hands down one of the best coastal panoramas in LA, you see the whole "
+            "coastline and the ocean from up here.",
+            "It's a real hike to get out there so plan for it and bring water.",
+            "Sunset is unreal, the marine layer below you catching color is "
+            "next level.",
+            "Time your return, it gets dark on the trail fast after sunset.",
+            "On clear days you can see Catalina sitting out on the water.",
+            "It's exposed and breezy up top so weigh down your gear.",
+            "Golden hour side light on the ridges gives amazing depth.",
+        ],
+        "gear": [
+            "A wide lens for the massive coastal panorama.",
+            "A 70 to 200 to pick out ridges and the distant coast.",
+            "A tripod for sunset and blue hour, weighted for wind.",
+        ],
+        "composition": [
+            "Layer the ridge lines down to the ocean for depth.",
+            "Catch the marine layer glowing below at sunset.",
+            "Use the trail or a ridge as a line into the view.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Sunrise"],
+        "best_seasons": ["Winter", "Spring", "Fall"],
+        "access_level": "Difficult",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Jerome C. Daniel Overlook",
+        "geocode_query": "Jerome C. Daniel Overlook above Hollywood Bowl, Los Angeles, CA",
+        "photo_query": "Mulholland Drive Los Angeles skyline overlook night",
+        "notes": [
+            "Classic Mulholland pullout looking down over the city, the Hollywood "
+            "Sign sits off to the side too.",
+            "Night is the move here, the whole grid of city lights spreads out below "
+            "you.",
+            "Blue hour gives you that deep sky plus the lights just coming on.",
+            "It's a small pullout so parking is tight, especially on weekend nights.",
+            "A long exposure pulls in car trails on the streets below.",
+            "Haze can mute the lights, a clear night after wind is best.",
+            "Bring a longer lens to compress the sign with the city.",
+        ],
+        "gear": [
+            "A tripod is a must for the night cityscape.",
+            "A 24 to 70 for the wide city spread.",
+            "A 70 to 200 to compress the sign and downtown.",
+        ],
+        "composition": [
+            "Spread the full grid of city lights across the frame.",
+            "Compress the Hollywood Sign against the distant skyline.",
+            "Add street car trails with a long exposure.",
+        ],
+        "best_times": ["Night", "BlueHour", "GoldenHour"],
+        "best_seasons": ["Winter", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Marina del Rey",
+        "geocode_query": "Marina del Rey, CA",
+        "photo_query": "Marina del Rey boats harbor sunset",
+        "notes": [
+            "Tons of boats and masts, great for reflections and that calm harbor "
+            "feeling at sunrise.",
+            "Sunrise gives you still water and pretty reflections of the masts and "
+            "sky.",
+            "Fisherman's Village and the jetty are nice spots to set up.",
+            "The masts make a forest of vertical lines, fun to play with.",
+            "Sunset over the water from the jetty side is warm and easy.",
+            "Pretty mellow and walkable, easy parking most of the time.",
+            "Long exposure at dusk smooths the water and the boats glow.",
+        ],
+        "gear": [
+            "A 24 to 70 for the harbor and boat scenes.",
+            "A tripod for sunrise reflections and dusk long exposures.",
+            "A polarizer to cut glare off the water.",
+        ],
+        "composition": [
+            "Mirror the masts and sky in still sunrise water.",
+            "Use a line of boats as a repeating leading line.",
+            "Silhouette the masts against a sunset sky.",
+        ],
+        "best_times": ["Sunrise", "GoldenHour", "BlueHour"],
+        "best_seasons": ["Summer", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Sunken City",
+        "geocode_query": "Sunken City, San Pedro, CA",
+        "photo_query": "San Pedro coast cliffs ocean rocks",
+        "notes": [
+            "Old collapsed clifftop with broken slabs and graffiti right over the "
+            "ocean, has a real moody abandoned vibe.",
+            "Sunset light on the cliffs and the water is gorgeous out here.",
+            "You have to scramble a bit and technically hop a fence, so be smart and "
+            "careful near the edges.",
+            "The broken concrete and rebar make gritty foreground against the sea.",
+            "The graffiti adds color if that's your style, otherwise shoot the raw "
+            "coastline.",
+            "It's exposed and the cliffs are no joke, do not get close to the edge "
+            "for a shot.",
+            "Long exposure of the surf hitting the rocks below is dramatic.",
+        ],
+        "gear": [
+            "A wide lens for the cliffs and the ocean.",
+            "An ND for long exposures of the surf.",
+            "A sturdy tripod, and watch your footing setting it up.",
+        ],
+        "composition": [
+            "Use the broken slabs as a gritty foreground to the sea.",
+            "Frame the coastline with the cliffs falling away.",
+            "Catch the surf exploding on the rocks below at sunset.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Sunrise"],
+        "best_seasons": ["Winter", "Fall", "Spring"],
+        "access_level": "Difficult",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Zuma Beach",
+        "geocode_query": "Zuma Beach, Malibu, CA",
+        "notes": [
+            "Big wide Malibu beach with clean sand and great open sunsets, easy and "
+            "reliable.",
+            "Sunset straight out over the water is the classic, almost always "
+            "delivers on a clear evening.",
+            "The far north end near the rocks has more foreground interest.",
+            "Low tide and wet sand give you sky reflections across the beach.",
+            "It's huge so even on a busy day you can find an empty stretch.",
+            "Watch for dolphins offshore, they cruise by pretty often.",
+            "A long exposure at dusk turns the surf into soft mist.",
+        ],
+        "gear": [
+            "A wide lens for the open beach and sunset.",
+            "An ND for smooth water at golden hour.",
+            "A tripod for the blue hour reflections.",
+        ],
+        "composition": [
+            "Center the sun dropping into the water for a clean sunset.",
+            "Use wet sand to mirror the sky colors.",
+            "Add a rock or piece of driftwood as foreground anchor.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Sunrise"],
+        "best_seasons": ["Summer", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0, 3.0, 12.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    {
+        "name": "Bradbury Building",
+        "geocode_query": "Bradbury Building, Los Angeles, CA",
+        "photo_query": "ornate atrium staircase ironwork",
+        "notes": [
+            "The interior atrium is jaw dropping, all wrought iron, warm wood, and "
+            "light pouring down from the glass roof.",
+            "Midday is best when the sun comes through the skylight and fills the "
+            "atrium with light.",
+            "Visitors can only go up to the first landing, but that's plenty for the "
+            "iconic shot.",
+            "Shoot up at the iron railings and the open elevator cage for that "
+            "timeless look.",
+            "It's a working building and a film legend, so be quick and respectful.",
+            "The geometry of the stairs and railings is endless for compositions.",
+            "Soft cloudy days still work since the light is diffused through the "
+            "roof.",
+        ],
+        "gear": [
+            "A wide lens to capture the full atrium and skylight.",
+            "A fast prime for the warm lower level light.",
+            "Handheld is the move, tripods aren't really allowed inside.",
+        ],
+        "composition": [
+            "Shoot up at the ironwork toward the bright skylight.",
+            "Use the staircase railings as sweeping leading lines.",
+            "Frame the open elevator cage against the glass roof.",
+        ],
+        "best_times": ["Midday", "GoldenHour", "Sunrise"],
+        "best_seasons": ["YearRound", "Winter", "Fall"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
     },
 ]
