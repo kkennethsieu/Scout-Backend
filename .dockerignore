@@ -1,0 +1,47 @@
+# Build context trimming — keep secrets, caches, and local cruft out.
+.git
+.github
+.venv
+venv
+env
+ENV
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tool caches / coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Secrets / env
+.env
+.env.*
+service-account.json
+serviceAccountKey*.json
+firebase-adminsdk*.json
+*.pem
+*.key
+
+# Firebase / logs
+.firebase/
+emulator-data/
+*.log
+
+# Tests, docs, scripts — not needed in the runtime image
+tests/
+docs/
+scripts/
+public/
+
+# OS
+.DS_Store
+Thumbs.db
