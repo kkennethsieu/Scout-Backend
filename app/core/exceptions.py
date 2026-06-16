@@ -4,11 +4,19 @@
 class DomainError(Exception):
     """Base class for all domain errors. Caught by the global handler in main.py."""
 
-    def __init__(self, status: int, code: str, detail: str, payload: dict | None = None):
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        detail: str,
+        payload: dict | None = None,
+        headers: dict | None = None,
+    ):
         self.status = status
         self.code = code
         self.detail = detail
         self.payload = payload or {}
+        self.headers = headers or {}
 
 
 class SpotNotFound(DomainError):
@@ -95,6 +103,29 @@ class MissingToken(DomainError):
 class InvalidToken(DomainError):
     def __init__(self):
         super().__init__(401, "INVALID_TOKEN", "Token is invalid or expired")
+
+
+class MissingAppCheck(DomainError):
+    def __init__(self):
+        super().__init__(401, "MISSING_APP_CHECK", "App Check token missing")
+
+
+class InvalidAppCheck(DomainError):
+    def __init__(self):
+        super().__init__(401, "INVALID_APP_CHECK", "App Check token is invalid or expired")
+
+
+class RateLimited(DomainError):
+    def __init__(self, retry_after: int | None = None):
+        payload = {"retry_after": retry_after} if retry_after is not None else None
+        headers = {"Retry-After": str(retry_after)} if retry_after is not None else None
+        super().__init__(
+            429,
+            "RATE_LIMITED",
+            "Too many requests. Please slow down.",
+            payload=payload,
+            headers=headers,
+        )
 
 
 class UpstreamUnavailable(DomainError):

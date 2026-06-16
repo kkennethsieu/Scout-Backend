@@ -7,7 +7,7 @@ authorization needed — ownership is enforced by the path. The Favorites list
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from app.api.v1.deps import current_uid
+from app.api.v1.deps import current_uid, rate_limit, verify_app_check
 from app.schemas.list import (
     ListCreate,
     ListResponse,
@@ -18,7 +18,7 @@ from app.schemas.list import (
 from app.schemas.pagination import PaginatedSpots
 from app.services import list_service
 
-router = APIRouter(tags=["lists"])
+router = APIRouter(tags=["lists"], dependencies=[Depends(verify_app_check)])
 
 
 @router.get("/users/me/lists", response_model=ListsOverview)
@@ -28,19 +28,32 @@ async def get_lists(uid: str = Depends(current_uid)):
     return await list_service.list_overview(uid)
 
 
-@router.post("/users/me/lists", response_model=ListResponse, status_code=201)
+@router.post(
+    "/users/me/lists",
+    response_model=ListResponse,
+    status_code=201,
+    dependencies=[Depends(rate_limit("30/minute", scope="create_list"))],
+)
 async def create_list(body: ListCreate, uid: str = Depends(current_uid)):
     """Create a new list, with an optional description."""
     return await list_service.create_list(uid, body.name, body.description)
 
 
-@router.patch("/users/me/lists/{list_id}", response_model=ListResponse)
+@router.patch(
+    "/users/me/lists/{list_id}",
+    response_model=ListResponse,
+    dependencies=[Depends(rate_limit("30/minute", scope="update_list"))],
+)
 async def update_list(list_id: str, body: ListUpdate, uid: str = Depends(current_uid)):
     """Edit a list's name and/or description. 400 FAVORITES_PROTECTED for Favorites."""
     return await list_service.update_list(uid, list_id, body.model_dump(exclude_unset=True))
 
 
-@router.delete("/users/me/lists/{list_id}", status_code=204)
+@router.delete(
+    "/users/me/lists/{list_id}",
+    status_code=204,
+    dependencies=[Depends(rate_limit("30/minute", scope="delete_list"))],
+)
 async def delete_list(list_id: str, uid: str = Depends(current_uid)):
     """Delete a list. 400 FAVORITES_PROTECTED for the Favorites list."""
     await list_service.delete_list(uid, list_id)
@@ -58,7 +71,11 @@ async def get_list_spots(
     return await list_service.get_list_spots(uid, list_id, limit, cursor)
 
 
-@router.patch("/users/me/spots/{spot_id}/lists", response_model=ListsOverview)
+@router.patch(
+    "/users/me/spots/{spot_id}/lists",
+    response_model=ListsOverview,
+    dependencies=[Depends(rate_limit("60/minute", scope="set_membership"))],
+)
 async def set_spot_membership(
     spot_id: str, body: SetMembershipRequest, uid: str = Depends(current_uid)
 ):
