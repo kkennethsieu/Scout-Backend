@@ -3,6 +3,7 @@
 Backend services for **Scout** — a high-fidelity photo spot discovery mobile application.
 
 ## Tech Stack & Architecture
+
 - **Core**: FastAPI (Python 3.12), served by Uvicorn
 - **Database / Storage**: Firebase Firestore & Cloud Storage (Admin SDK)
 - **External services**: Google Geocoding API (reverse-geocoding new spots)
@@ -14,6 +15,8 @@ Backend services for **Scout** — a high-fidelity photo spot discovery mobile a
 ---
 
 ## Directory Structure
+
+.
 
 ```
 scout-backend/
@@ -51,11 +54,13 @@ scout-backend/
 ### Local Development
 
 1. **Install Firebase Tools**:
+
    ```bash
    npm install -g firebase-tools
    ```
 
 2. **Install Python dependencies**:
+
    ```bash
    pip install -e ".[dev]"
    ```
@@ -64,11 +69,13 @@ scout-backend/
    (see [Environment Variables](#environment-variables)).
 
 4. **Start the Firebase Emulator Suite** (Terminal 1):
+
    ```bash
    make emulators
    ```
 
 5. **Start the FastAPI Backend** (Terminal 2):
+
    ```bash
    make dev          # uvicorn with --reload on :8000, loads .env
    ```
@@ -86,30 +93,32 @@ scout-backend/
 Loaded from environment or a local `.env` file (gitignored). On Cloud Run these are
 set on the service; secrets come from Secret Manager (see [Deployment](#deployment)).
 
-| Variable | Required | Default | Notes |
-| :--- | :--- | :--- | :--- |
-| `STORAGE_BUCKET` | ✓ | — | Cloud Storage bucket for photos |
-| `GEOCODING_API_KEY` | ✓ | — | Google Geocoding API key. **Secret Manager in prod**, never a plaintext env var |
-| `ENV` | — | `dev` | `dev` \| `prod` \| `test` |
-| `FIREBASE_CREDENTIALS_PATH` | — | _(unset)_ | Local: path to a service-account JSON. **Unset on Cloud Run** → uses Application Default Credentials (the runtime service account) |
-| `MAX_PHOTO_BYTES` | — | `10485760` | Per-photo size cap (10 MB) |
-| `SPOT_CACHE_TTL_SECONDS` | — | `45` | TTL for the in-process spots snapshot backing nearby/search scans |
-| `CORS_ORIGINS` | — | `["*"]` | Allowed origins (JSON list). iOS ignores CORS; this is for the eventual web client + Swagger UI |
-| `APP_CHECK_ENFORCED` | — | `false` | When `false`, missing/invalid App Check tokens are logged but allowed. Flip to `true` once the iOS app ships the App Check SDK |
-| `PRIVACY_POLICY_URL` | — | hosted URL | Surfaced via `GET /legal` |
-| `TERMS_OF_SERVICE_URL` | — | hosted URL | Surfaced via `GET /legal` |
-| `LEGAL_UPDATED_AT` | — | ISO date | Last revision date shown by `GET /legal` |
+| Variable                    | Required | Default    | Notes                                                                                                                              |
+| :-------------------------- | :------- | :--------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| `STORAGE_BUCKET`            | ✓        | —          | Cloud Storage bucket for photos                                                                                                    |
+| `GEOCODING_API_KEY`         | ✓        | —          | Google Geocoding API key. **Secret Manager in prod**, never a plaintext env var                                                    |
+| `ENV`                       | —        | `dev`      | `dev` \| `prod` \| `test`                                                                                                          |
+| `FIREBASE_CREDENTIALS_PATH` | —        | _(unset)_  | Local: path to a service-account JSON. **Unset on Cloud Run** → uses Application Default Credentials (the runtime service account) |
+| `MAX_PHOTO_BYTES`           | —        | `10485760` | Per-photo size cap (10 MB)                                                                                                         |
+| `SPOT_CACHE_TTL_SECONDS`    | —        | `45`       | TTL for the in-process spots snapshot backing nearby/search scans                                                                  |
+| `CORS_ORIGINS`              | —        | `["*"]`    | Allowed origins (JSON list). iOS ignores CORS; this is for the eventual web client + Swagger UI                                    |
+| `APP_CHECK_ENFORCED`        | —        | `false`    | When `false`, missing/invalid App Check tokens are logged but allowed. Flip to `true` once the iOS app ships the App Check SDK     |
+| `PRIVACY_POLICY_URL`        | —        | hosted URL | Surfaced via `GET /legal`                                                                                                          |
+| `TERMS_OF_SERVICE_URL`      | —        | hosted URL | Surfaced via `GET /legal`                                                                                                          |
+| `LEGAL_UPDATED_AT`          | —        | ISO date   | Last revision date shown by `GET /legal`                                                                                           |
 
 ---
 
 ## Test Suite
 
 Run all unit and integration tests under the isolated Firebase Emulator Suite:
+
 ```bash
 make test
 ```
 
 Linting and style checks:
+
 ```bash
 make lint
 ```
@@ -122,11 +131,13 @@ The service runs on **Google Cloud Run** (project `scout-497021`, region `us-wes
 service `scout-backend`).
 
 ### Container
+
 The `Dockerfile` builds a slim Python 3.12 image, installs the package, and runs
 Uvicorn bound to Cloud Run's injected `$PORT` with a single worker (Cloud Run scales
 horizontally, not vertically).
 
 ### Continuous Deployment
+
 `.github/workflows/test.yml` defines the full pipeline:
 
 1. On every **push and PR** to `main` → the `test` job runs the suite under the
@@ -142,6 +153,7 @@ GitHub repo **variables** used by the deploy job (no secrets needed with WIF):
 `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SA`.
 
 ### Secrets & IAM
+
 - **`GEOCODING_API_KEY`** is stored in **Secret Manager** and referenced by the
   service (not a plaintext env var).
 - The Cloud Run **runtime service account** needs: `roles/datastore.user` (Firestore),
@@ -150,11 +162,13 @@ GitHub repo **variables** used by the deploy job (no secrets needed with WIF):
   `allUsers:objectViewer` (public read).
 
 ### Scaling / cost
+
 Scales to zero (`min-instances=0`), capped at `max-instances=20`, concurrency 80.
 A billing budget alert is recommended — instance caps bound compute but not
 Firestore/Storage/egress.
 
 ### Manual deploy (escape hatch)
+
 ```bash
 make deploy-dev       # gcloud run deploy scout-backend-dev --source . (us-central1)
 make deploy-hosting   # firebase deploy --only hosting (legal pages)
@@ -172,14 +186,14 @@ make deploy-hosting   # firebase deploy --only hosting (legal pages)
 - **Rate limiting** — per-user (keyed on Firebase uid) limits on write endpoints,
   returning **429 `RATE_LIMITED`** with a `Retry-After` header when exceeded:
 
-  | Endpoint | Limit |
-  | :--- | :--- |
+  | Endpoint                                              | Limit    |
+  | :---------------------------------------------------- | :------- |
   | `POST /spots/{id}/reviews`, `POST /spots/with-review` | 10 / min |
-  | `PATCH /users/me` | 20 / min |
-  | `DELETE /users/me` | 10 / min |
-  | `POST`/`PATCH`/`DELETE /users/me/lists...` | 30 / min |
-  | `PATCH /users/me/spots/{id}/lists` | 60 / min |
-  | `DELETE /reviews/{id}` | 30 / min |
+  | `PATCH /users/me`                                     | 20 / min |
+  | `DELETE /users/me`                                    | 10 / min |
+  | `POST`/`PATCH`/`DELETE /users/me/lists...`            | 30 / min |
+  | `PATCH /users/me/spots/{id}/lists`                    | 60 / min |
+  | `DELETE /reviews/{id}`                                | 30 / min |
 
   > Limits are in-process per Cloud Run instance, so the effective ceiling scales
   > with instance count. Sufficient to throttle a single abuser; swap the storage
@@ -195,28 +209,28 @@ make deploy-hosting   # firebase deploy --only hosting (legal pages)
 
 ## API Contract
 
-| Method | Path | Auth | Purpose |
-| :--- | :--- | :--- | :--- |
-| **GET** | `/health` | — | Liveness check (Cloud Run) |
-| **GET** | `/legal` | — | Public links to the hosted privacy policy + terms of service |
-| **GET** | `/users/me` | ✓ | Fetch or initialize current user doc (read-through) |
-| **PATCH** | `/users/me` | ✓ | Update own profile (multipart): `display_name`, `home_city`, `home_country`, notification prefs, optional profile `photo`. Partial update; `email` is read-only |
-| **DELETE** | `/users/me` | ✓ | Delete the caller's account: anonymizes their reviews, hard-deletes the user doc, and deletes the Firebase Auth user |
-| **GET** | `/spots` | ✓ | Find nearby spots within radius (lat/lng/radius_km) |
-| **GET** | `/spots/search` | ✓ | Search spots by name (global, not geo-scoped) |
-| **GET** | `/spots/{id}` | ✓ | Retrieve a single spot's details and computed aggregates |
-| **GET** | `/spots/{id}/reviews` | ✓ | Fetch paginated review feed for a spot |
-| **POST** | `/spots/{id}/reviews` | ✓ | Submit a new review for an existing spot (multipart JPEG, 1–5 photos) |
-| **POST** | `/spots/with-review` | ✓ | Submit a brand new spot and its first review atomically (409 if a spot already exists within 50 m) |
-| **GET** | `/reviews/{id}` | ✓ | Retrieve detailed info for a single review |
-| **DELETE** | `/reviews/{id}` | ✓ | Delete the caller's own review; reverses spot aggregates (deletes the spot if it was its last review). 403 if not the author |
-| **GET** | `/users/me/reviews` | ✓ | Fetch the current user's submitted reviews paginated |
-| **GET** | `/users/me/lists` | ✓ | The caller's saved lists (Favorites first, auto-created) plus a `memberships` map — `{ lists, memberships }` in one snapshot |
-| **POST** | `/users/me/lists` | ✓ | Create a new list (JSON `{ name, description? }`) |
-| **PATCH** | `/users/me/lists/{id}` | ✓ | Edit `name` / `description`. 400 `FAVORITES_PROTECTED` for Favorites |
-| **DELETE** | `/users/me/lists/{id}` | ✓ | Delete a list. 400 `FAVORITES_PROTECTED` for Favorites |
-| **GET** | `/users/me/lists/{id}/spots` | ✓ | Paginated spots in a list, newest first (missing spots skipped) |
-| **PATCH** | `/users/me/spots/{spot_id}/lists` | ✓ | Set the exact set of lists a spot belongs to (JSON `{ list_ids }`); diffed server-side in one transaction. The only membership write path; returns the refreshed `{ lists, memberships }` overview |
+| Method     | Path                              | Auth | Purpose                                                                                                                                                                                            |
+| :--------- | :-------------------------------- | :--- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **GET**    | `/health`                         | —    | Liveness check (Cloud Run)                                                                                                                                                                         |
+| **GET**    | `/legal`                          | —    | Public links to the hosted privacy policy + terms of service                                                                                                                                       |
+| **GET**    | `/users/me`                       | ✓    | Fetch or initialize current user doc (read-through)                                                                                                                                                |
+| **PATCH**  | `/users/me`                       | ✓    | Update own profile (multipart): `display_name`, `home_city`, `home_country`, notification prefs, optional profile `photo`. Partial update; `email` is read-only                                    |
+| **DELETE** | `/users/me`                       | ✓    | Delete the caller's account: anonymizes their reviews, hard-deletes the user doc, and deletes the Firebase Auth user                                                                               |
+| **GET**    | `/spots`                          | ✓    | Find nearby spots within radius (lat/lng/radius_km)                                                                                                                                                |
+| **GET**    | `/spots/search`                   | ✓    | Search spots by name (global, not geo-scoped)                                                                                                                                                      |
+| **GET**    | `/spots/{id}`                     | ✓    | Retrieve a single spot's details and computed aggregates                                                                                                                                           |
+| **GET**    | `/spots/{id}/reviews`             | ✓    | Fetch paginated review feed for a spot                                                                                                                                                             |
+| **POST**   | `/spots/{id}/reviews`             | ✓    | Submit a new review for an existing spot (multipart JPEG, 1–5 photos)                                                                                                                              |
+| **POST**   | `/spots/with-review`              | ✓    | Submit a brand new spot and its first review atomically (409 if a spot already exists within 50 m)                                                                                                 |
+| **GET**    | `/reviews/{id}`                   | ✓    | Retrieve detailed info for a single review                                                                                                                                                         |
+| **DELETE** | `/reviews/{id}`                   | ✓    | Delete the caller's own review; reverses spot aggregates (deletes the spot if it was its last review). 403 if not the author                                                                       |
+| **GET**    | `/users/me/reviews`               | ✓    | Fetch the current user's submitted reviews paginated                                                                                                                                               |
+| **GET**    | `/users/me/lists`                 | ✓    | The caller's saved lists (Favorites first, auto-created) plus a `memberships` map — `{ lists, memberships }` in one snapshot                                                                       |
+| **POST**   | `/users/me/lists`                 | ✓    | Create a new list (JSON `{ name, description? }`)                                                                                                                                                  |
+| **PATCH**  | `/users/me/lists/{id}`            | ✓    | Edit `name` / `description`. 400 `FAVORITES_PROTECTED` for Favorites                                                                                                                               |
+| **DELETE** | `/users/me/lists/{id}`            | ✓    | Delete a list. 400 `FAVORITES_PROTECTED` for Favorites                                                                                                                                             |
+| **GET**    | `/users/me/lists/{id}/spots`      | ✓    | Paginated spots in a list, newest first (missing spots skipped)                                                                                                                                    |
+| **PATCH**  | `/users/me/spots/{spot_id}/lists` | ✓    | Set the exact set of lists a spot belongs to (JSON `{ list_ids }`); diffed server-side in one transaction. The only membership write path; returns the refreshed `{ lists, memberships }` overview |
 
 ---
 
@@ -277,7 +291,7 @@ enforced by the path; there's no cross-user access and no owner check.
   cover photo) and `spot_count` (but **not** its raw `spot_ids`), while
   `memberships` maps every list id → its `spot_ids` (all lists, empty → `[]`) so
   the client can hydrate heart/checkbox state without a second call. `PATCH
-  /users/me/spots/{spot_id}/lists` returns the same shape so the store re-hydrates
+/users/me/spots/{spot_id}/lists` returns the same shape so the store re-hydrates
   atomically after each edit. Page a list's full spots via
   `GET /users/me/lists/{id}/spots` (newest first; deleted spots silently skipped).
 
@@ -306,9 +320,11 @@ rather than hardcoding them, so they can be repointed (e.g. to a custom domain) 
 `PRIVACY_POLICY_URL` / `TERMS_OF_SERVICE_URL` / `LEGAL_UPDATED_AT` env vars — no app release needed.
 
 Deploy the pages:
+
 ```bash
 make deploy-hosting   # firebase deploy --only hosting --project scout-497021
 ```
+
 Default URLs: `https://scout-497021.web.app/privacy` and `/terms`.
 
 > The page content in `public/privacy.html` / `public/terms.html` is a **starter template, not
