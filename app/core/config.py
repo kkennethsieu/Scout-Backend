@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     TERMS_OF_SERVICE_URL: str = "https://scout-497021.web.app/terms"
     # ISO date the legal documents were last revised (shown by GET /legal).
     LEGAL_UPDATED_AT: str = "2026-06-12"
+    # Firebase App Check. When False, a missing/invalid X-Firebase-AppCheck header
+    # is logged but allowed through (so the API keeps working before the iOS app
+    # ships the App Check SDK). Flip to True via env once the client sends tokens.
+    APP_CHECK_ENFORCED: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

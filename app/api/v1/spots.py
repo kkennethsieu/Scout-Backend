@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Query
 
-from app.api.v1.deps import current_uid
+from app.api.v1.deps import current_uid, rate_limit, verify_app_check
 from app.schemas.pagination import PaginatedReviews, PaginatedSpots
 from app.schemas.review import (
     ReviewCreate,
@@ -15,7 +15,7 @@ from app.schemas.review import (
 from app.schemas.spot import SpotResponse, SpotSummaryResponse
 from app.services import geocoding, review_service, spot_service
 
-router = APIRouter(tags=["spots"])
+router = APIRouter(tags=["spots"], dependencies=[Depends(verify_app_check)])
 
 
 @router.get("/spots", response_model=PaginatedSpots)
@@ -66,7 +66,12 @@ async def get_spot_reviews(
     return await review_service.get_reviews_for_spot(spot_id, limit, cursor)
 
 
-@router.post("/spots/{spot_id}/reviews", response_model=ReviewResponse, status_code=201)
+@router.post(
+    "/spots/{spot_id}/reviews",
+    response_model=ReviewResponse,
+    status_code=201,
+    dependencies=[Depends(rate_limit("10/minute", scope="submit_review"))],
+)
 async def submit_review(
     spot_id: str,
     data: Annotated[ReviewCreate, Form()],
@@ -86,6 +91,7 @@ async def submit_review(
     "/spots/with-review",
     response_model=SubmitReviewWithNewSpotResponse,
     status_code=201,
+    dependencies=[Depends(rate_limit("10/minute", scope="submit_with_new_spot"))],
 )
 async def submit_with_new_spot(
     data: Annotated[SpotWithReviewCreate, Form()],

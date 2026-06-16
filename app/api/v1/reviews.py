@@ -2,11 +2,11 @@
 
 from fastapi import APIRouter, Depends, Response
 
-from app.api.v1.deps import current_uid
+from app.api.v1.deps import current_uid, rate_limit, verify_app_check
 from app.schemas.review import ReviewResponse
 from app.services import review_service
 
-router = APIRouter(tags=["reviews"])
+router = APIRouter(tags=["reviews"], dependencies=[Depends(verify_app_check)])
 
 
 @router.get("/reviews/{review_id}", response_model=ReviewResponse)
@@ -18,7 +18,11 @@ async def get_review(
     return await review_service.get_review(review_id)
 
 
-@router.delete("/reviews/{review_id}", status_code=204)
+@router.delete(
+    "/reviews/{review_id}",
+    status_code=204,
+    dependencies=[Depends(rate_limit("30/minute", scope="delete_review"))],
+)
 async def delete_review(
     review_id: str,
     uid: str = Depends(current_uid),

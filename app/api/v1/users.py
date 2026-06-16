@@ -4,12 +4,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Query, Response
 
-from app.api.v1.deps import current_uid, verify_token
+from app.api.v1.deps import current_uid, rate_limit, verify_app_check, verify_token
 from app.schemas.pagination import PaginatedReviews
 from app.schemas.user import UserResponse, UserUpdate
 from app.services import review_service, storage_service, user_service
 
-router = APIRouter(tags=["users"])
+router = APIRouter(tags=["users"], dependencies=[Depends(verify_app_check)])
 
 
 @router.get("/users/me", response_model=UserResponse)
@@ -26,7 +26,11 @@ async def get_current_user(
     return await user_service.get_or_create_user(uid, claims)
 
 
-@router.patch("/users/me", response_model=UserResponse)
+@router.patch(
+    "/users/me",
+    response_model=UserResponse,
+    dependencies=[Depends(rate_limit("20/minute", scope="update_user"))],
+)
 async def update_current_user(
     body: Annotated[UserUpdate, Form()],
     claims: dict = Depends(verify_token),
@@ -63,7 +67,11 @@ async def update_current_user(
     return result
 
 
-@router.delete("/users/me", status_code=204)
+@router.delete(
+    "/users/me",
+    status_code=204,
+    dependencies=[Depends(rate_limit("10/minute", scope="delete_user"))],
+)
 async def delete_current_user(
     uid: str = Depends(current_uid),
 ):
