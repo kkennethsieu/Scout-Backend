@@ -65,3 +65,6 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Seeder geocode cache (local)
+scripts/.geocode_cache.json

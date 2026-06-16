@@ -33,8 +33,29 @@ from app.services.storage_service import (
     upload_photos,
     validate_photo_count,
 )
+from app.services.user_service import DELETED_USER_ID, get_users_by_ids
 
 log = logging.getLogger(__name__)
+
+
+def _attach_authors(reviews: list[dict]) -> list[dict]:
+    """Enrich each review with the author's CURRENT display_name + photo_url via a
+    single batched user lookup (read-time join — avoids denormalizing author info
+    onto review docs, so a profile rename/avatar change is reflected immediately).
+
+    Mutates and returns the same dicts. Deleted/missing authors get a placeholder.
+    """
+    uids = [r.get("user_id") for r in reviews]
+    authors = get_users_by_ids(uids)
+    for r in reviews:
+        uid = r.get("user_id")
+        if uid == DELETED_USER_ID:
+            r["author_name"], r["author_photo_url"] = "Deleted user", None
+        else:
+            a = authors.get(uid) or {}
+            r["author_name"] = a.get("display_name")
+            r["author_photo_url"] = a.get("photo_url")
+    return reviews
 
 
 async def get_review(review_id: str) -> dict:
@@ -45,7 +66,7 @@ async def get_review(review_id: str) -> dict:
         raise ReviewNotFound()
     data = snap.to_dict()
     data["id"] = snap.id
-    return data
+    return _attach_authors([data])[0]
 
 
 async def get_reviews_for_spot(spot_id: str, limit: int = 20, cursor: str | None = None) -> dict:
@@ -83,7 +104,7 @@ async def get_reviews_for_spot(spot_id: str, limit: int = 20, cursor: str | None
 
     next_cursor = docs[limit - 1].id if len(docs) > limit else None
 
-    return {"items": items, "limit": limit, "next_cursor": next_cursor}
+    return {"items": _attach_authors(items), "limit": limit, "next_cursor": next_cursor}
 
 
 async def get_reviews_for_user(user_id: str, limit: int = 10, cursor: str | None = None) -> dict:
@@ -120,7 +141,7 @@ async def get_reviews_for_user(user_id: str, limit: int = 10, cursor: str | None
 
     next_cursor = docs[limit - 1].id if len(docs) > limit else None
 
-    return {"items": items, "limit": limit, "next_cursor": next_cursor}
+    return {"items": _attach_authors(items), "limit": limit, "next_cursor": next_cursor}
 
 
 def _existing_review_id(spot_id: str, uid: str, txn=None) -> str | None:
@@ -236,7 +257,7 @@ async def submit_review(
     # Spot aggregates changed — drop the cached snapshot on this instance.
     spot_cache.invalidate()
 
-    return {**review_dict, "id": review_id, "spot_id": spot_id}
+    return _attach_authors([{**review_dict, "id": review_id, "spot_id": spot_id}])[0]
 
 
 async def submit_with_new_spot(
@@ -355,7 +376,7 @@ async def submit_with_new_spot(
     spot_dict["id"] = spot_id
     review_dict["id"] = review_id
 
-    return {"spot": spot_dict, "review": review_dict}
+    return {"spot": spot_dict, "review": _attach_authors([review_dict])[0]}
 
 
 # Spot identity fields carried across an aggregate rebuild (everything that

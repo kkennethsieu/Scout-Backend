@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from firebase_admin import auth
 from google.api_core.exceptions import GoogleAPICallError
+from google.cloud.firestore_v1.field_path import FieldPath
 
 from app.core.exceptions import InternalError, UpstreamUnavailable
 from app.core.firebase import db
@@ -17,6 +18,33 @@ DELETED_USER_ID = "deleted_user"
 
 # Firestore caps a batched write at 500 ops; stay under it with headroom.
 _BATCH_LIMIT = 450
+
+# Firestore caps an `in` filter at 30 values.
+_IN_QUERY_LIMIT = 30
+
+
+def get_users_by_ids(ids: list[str]) -> dict[str, dict]:
+    """Batch-resolve user ids to public author info {display_name, photo_url}.
+
+    Returns {uid: {...}} for the ids that resolve to a real user doc. The
+    DELETED_USER_ID sentinel and any missing users are simply omitted, so callers
+    fall back to a placeholder. Mirrors spot_service.get_spots_by_ids — chunks
+    ids into Firestore's 30-value `in` limit. Synchronous (Firestore SDK is sync).
+    """
+    found: dict[str, dict] = {}
+    unique = list({i for i in ids if i and i != DELETED_USER_ID})
+    if not unique:
+        return found
+    col = db.collection("users")
+    for start in range(0, len(unique), _IN_QUERY_LIMIT):
+        chunk = unique[start : start + _IN_QUERY_LIMIT]
+        for doc in col.where(FieldPath.document_id(), "in", chunk).stream():
+            d = doc.to_dict()
+            found[doc.id] = {
+                "display_name": d.get("display_name"),
+                "photo_url": d.get("photo_url"),
+            }
+    return found
 
 
 async def get_or_create_user(uid: str, token_claims: dict) -> dict:
