@@ -81,7 +81,7 @@ from a negative answer.
 
 | Field            | Type          | Rule                  |
 | :--------------- | :------------ | :-------------------- |
-| `photos`         | file × (1–10) | see [Photos](#photos) |
+| `photos`         | file × (1–5)  | see [Photos](#photos) |
 | `overall_rating` | int           | `1`–`5`               |
 
 ### New-spot only (`/spots/with-review`)
@@ -337,7 +337,7 @@ user-facing messaging:
 | :--- | :------------------------------------------ | :------------------------------------------------------ | :------------------------------------------------------------------------ |
 | 400  | `PHOTO_INVALID_FORMAT`                      | A photo wasn't JPEG                                     | Bug in transcode step — re-encode before retry                            |
 | 400  | `PHOTO_TOO_LARGE`                           | A photo > 10 MB                                         | Re-compress at lower quality / smaller edge                               |
-| 400  | `PHOTO_COUNT_INVALID`                       | 0 photos, or > 10                                       | Enforce 1–10 in the picker                                                |
+| 400  | `PHOTO_COUNT_INVALID`                       | 0 photos, or > 5                                        | Enforce 1–5 in the picker                                                 |
 | 400  | `INVALID_ENUM_VALUE`                        | A field had a value outside its vocabulary              | Fix the string (case-sensitive)                                           |
 | 401  | `INVALID_TOKEN` / `MISSING_TOKEN`           | Bad/absent ID token                                     | Refresh the Firebase ID token, retry                                      |
 | 404  | `SPOT_NOT_FOUND`                            | `spot_id` doesn't exist (existing-spot route)           | —                                                                         |
@@ -356,7 +356,7 @@ user-facing messaging:
 
 - [ ] Every image is transcoded to **JPEG** (never raw HEIC).
 - [ ] Longest edge capped (~2048 px); each file verified ≤ 10 MB.
-- [ ] 1–10 photos enforced in the UI before the request.
+- [ ] 1–5 photos enforced in the UI before the request.
 - [ ] Enum values sent as exact capitalized strings.
 - [ ] Enum lists and `photos` sent as **repeated keys**, not arrays/CSV.
 - [ ] Tristate booleans **omitted** (not empty/false) when unanswered.

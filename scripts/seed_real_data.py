@@ -1,7 +1,13 @@
-"""Seed FAKE data into the REAL Firestore (dev environment only).
+"""Seed realistic data into the REAL Firestore, with REAL photos in Storage.
 
-DANGER: This writes to your actual Firebase project. Triple-check the
-project name before running.
+Spots, reviews, and users are written to Firestore and Firebase Auth. Photos are
+genuine JPEGs: a pool of stock images is downloaded from picsum.photos, EXIF-
+stripped via Pillow (mirroring app/services/storage_service.py), and uploaded as
+real blobs to the Cloud Storage bucket — so photo_urls are real bucket URLs of
+the same shape a live submission produces (storage.googleapis.com/<bucket>/...).
+
+DANGER: This writes to your actual Firebase project AND uploads objects to your
+real Storage bucket. Triple-check the project name before running.
 
 Auth: uses gcloud Application Default Credentials by default. Run
 `gcloud auth application-default login` once before using.
@@ -10,87 +16,48 @@ Optionally override with GOOGLE_APPLICATION_CREDENTIALS=<path-to-json>.
 Usage:
     # With gcloud ADC (recommended for local dev):
     gcloud auth application-default login
-    python -m scripts.seed_real_db --project scout-dev --spots 8
+    python -m scripts.seed_real_data --project scout-497021 --spots 8
 
     # Or with a service account file:
-    GOOGLE_APPLICATION_CREDENTIALS=./scout-dev-service-account.json \\
-      python -m scripts.seed_real_db --project scout-dev --spots 8
+    GOOGLE_APPLICATION_CREDENTIALS=./service-account.json \\
+      python -m scripts.seed_real_data --project scout-497021 --spots 8
 
-The script refuses to run unless --project starts with 'scout-dev' to
-prevent accidental prod writes.
+The script refuses to run unless --project is exactly 'scout-497021' to
+prevent accidental writes to the wrong project.
 """
 
 import argparse
+import json
 import os
 import random
 import sys
+import urllib.parse
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from uuid import uuid4
 
 # Do NOT set FIRESTORE_EMULATOR_HOST here. We want real Firestore.
 import firebase_admin
-from firebase_admin import auth, credentials, firestore
+from firebase_admin import auth, credentials, firestore, storage
+from PIL import Image
 
-DEFAULT_CENTER_LAT = 34.0522
-DEFAULT_CENTER_LNG = -118.2437
+# The only project this script is allowed to touch.
+ALLOWED_PROJECT = "scout-497021"
+DEFAULT_BUCKET = "dev-scout-photos"
 
 # A user the developer created manually in Firebase Auth for on-device testing.
 # Seeded as a review author on every spot so there's always "my own" data to view.
 PERSONAL_TEST_UID = "32WaqmcxZ2e6Zg5aGR9eMNvwokB2"
 
-SPOT_NAMES = [
-    "Griffith Observatory Overlook",
-    "Echo Park Lake Bridge",
-    "Vista Hermosa Sunset",
-    "Sixth Street Viaduct",
-    "Hollywood Sign Trail",
-    "Venice Canals South",
-    "Baldwin Hills Scenic",
-    "Angels Flight Steps",
-    "Mulholland Pull-Off",
-    "Kenneth Hahn Ridge",
-    "El Matador Cove",
-    "Point Dume Bluff",
-    "Runyon Canyon Peak",
-    "Downtown Rooftop North",
-    "Silver Lake Reservoir",
-    "Elysian Park Vista",
-    "Bronson Canyon Caves",
-    "Abbot Kinney Murals",
-    "Santa Monica Pier End",
-    "Malibu Pier Sunrise",
-    "Topanga Lookout Ridge",
-    "Eaton Canyon Falls",
-    "Walt Disney Concert Curve",
-    "Union Station Archway",
-    "Watts Towers Base",
-    "Manhattan Beach Pylons",
-    "Palos Verdes Tide Pools",
-    "Leo Carrillo Sea Caves",
-    "Inspiration Point Trail",
-    "Greystone Mansion Steps",
-    "Los Liones Overlook",
-    "Ascot Hills Ridge",
-    "Debs Park Summit",
-    "Culver City Stairs Top",
-    "Marina del Rey Jetty",
-]
+# Curated real spots with hand-authored, location-specific notes (see seed_spots.py).
+from scripts.seed_spots import SEED_SPOTS  # noqa: E402
 
-NOTES_POOL = [
-    "Soft light right before sunset, sparse foot traffic on weekdays.",
-    "Bring a wide lens — the skyline barely fits at 24mm full frame.",
-    "Lot fills up fast on weekends; arrive at least an hour before golden hour.",
-    "Marine layer can roll in unexpectedly even in summer. Check the webcam first.",
-    "Gate locks at 10pm sharp. Rangers do enforce it.",
-    "The hike is steeper than it looks on the map. Wear real shoes.",
-    "Shoulder of the road is narrow — park on the south side only.",
-    "Tripods are tolerated but security will ask you to leave if you block the path.",
-]
-
+# Enum value pools — used by _mostly() to pick occasional off-mode values.
+# Must match the API schema (app/schemas/review.py).
 BEST_TIMES = ["Sunrise", "GoldenHour", "BlueHour", "Midday", "Night"]
 ACCESS_LEVELS = ["Easy", "Moderate", "Difficult"]
-# entrance_fee is now a USD number (0 = free). Mostly-free pool for realism.
-ENTRANCE_FEES = [0.0, 0.0, 0.0, 0.0, 10.00, 15.00, 25.00, 35.00]
 CROWD_LEVELS = ["Empty", "Light", "Moderate", "Crowded"]
 SEASONS = ["Spring", "Summer", "Fall", "Winter", "YearRound"]
 
@@ -213,38 +180,247 @@ def update_or_init_aggregates(spot: dict, review: dict, review_id: str) -> dict:
     return s
 
 
-def jittered_coord(center_lat: float, center_lng: float, max_km: float):
-    import math
+# --- Real photos: Unsplash search → download → EXIF-strip → Storage upload ---
+#
+# Only search calls (api.unsplash.com) count against the rate limit (50/hour on a
+# demo key). Image-byte downloads (images.unsplash.com) are unlimited. We do one
+# search per distinct query and reuse the resulting image pool across that spot's
+# reviews, so total search calls == number of distinct spot queries.
 
-    dlat_km = random.uniform(-max_km, max_km)
-    dlng_km = random.uniform(-max_km, max_km)
-    dlat = dlat_km / 111.0
-    dlng = dlng_km / (111.0 * math.cos(math.radians(center_lat)))
-    return center_lat + dlat, center_lng + dlng
-
-
-GEAR_POOL = [
-    "Wide-angle lens (14-24mm) is perfect here.",
-    "Bring a solid carbon tripod for low-light shots.",
-    "Highly recommend an ND filter for long exposures.",
-    "A fast f/1.8 prime lens works best after dusk.",
-    "Circular polarizer will save you from water glare.",
-]
-
-COMP_POOL = [
-    "Use the leading lines of the pathway towards the center.",
-    "Get extremely low to frame elements in the foreground.",
-    "Position your subject on the right third of the frame.",
-    "Shoot through the tree branches for a natural vignette.",
-    "Catch the light reflections on wet surfaces.",
-]
+UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
+GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+GEOCODE_CACHE_PATH = os.path.join(os.path.dirname(__file__), ".geocode_cache.json")
 
 
-def make_review(spot_id: str, spot_doc: dict, user_uid: str, created_at: datetime):
-    review_id = str(uuid4())
-    photo_count = random.randint(1, 3)
-    photo_urls = [f"https://picsum.photos/seed/{review_id}-{i}/800/600" for i in range(photo_count)]
-    times = random.sample(BEST_TIMES, k=random.randint(1, 2))
+def _require_geocoding_key() -> str:
+    """Same key the app uses (Google Geocoding API), read from env or .env."""
+    key = os.environ.get("GEOCODING_API_KEY")
+    if not key:
+        try:
+            from dotenv import dotenv_values
+
+            key = dotenv_values(".env").get("GEOCODING_API_KEY")
+        except ImportError:
+            pass
+    if not key:
+        sys.exit("[seed] GEOCODING_API_KEY is not set (needed to resolve real coordinates).")
+    return key
+
+
+def _geocode_components(result: dict) -> tuple[str, str, str]:
+    """Pull (city, admin_area, country) from a Geocoding result — mirrors
+    app/services/geocoding.py:_parse_components."""
+    candidates = {"locality": "", "sublocality": "", "postal_town": ""}
+    admin = country = ""
+    for c in result.get("address_components", []):
+        types = c.get("types", [])
+        for key in candidates:
+            if key in types:
+                candidates[key] = c["long_name"]
+        if "administrative_area_level_1" in types:
+            admin = c["long_name"]
+        if "country" in types:
+            country = c["long_name"]
+    city = candidates["locality"] or candidates["sublocality"] or candidates["postal_town"]
+    return city, admin, country
+
+
+def forward_geocode(query: str, key: str, cache: dict) -> dict | None:
+    """Resolve a place name to real {lat, lng, city, admin_area, country}.
+
+    Results are memoized in `cache` (persisted to .geocode_cache.json by main)
+    so reruns don't re-call the API and coordinates stay stable.
+    """
+    if query in cache:
+        return cache[query]
+    params = urllib.parse.urlencode({"address": query, "key": key})
+    try:
+        with urllib.request.urlopen(f"{GEOCODE_URL}?{params}", timeout=15) as resp:
+            body = json.load(resp)
+    except Exception as e:
+        print(f"[seed]   ! Geocode request failed for '{query}': {e}")
+        return None
+    if body.get("status") != "OK" or not body.get("results"):
+        print(f"[seed]   ! Geocode returned {body.get('status')} for '{query}'")
+        return None
+    res = body["results"][0]
+    loc = res["geometry"]["location"]
+    city, admin, country = _geocode_components(res)
+    resolved = {
+        "lat": loc["lat"],
+        "lng": loc["lng"],
+        "city": city,
+        "admin_area": admin,
+        "country": country,
+    }
+    cache[query] = resolved
+    return resolved
+
+# Generic words in spot names that add noise to image search — dropped from the query.
+_QUERY_STOPWORDS = {
+    "overlook", "trail", "ridge", "lookout", "vista", "point", "steps", "curve",
+    "archway", "base", "end", "top", "summit", "peak", "south", "north", "pull-off",
+}
+
+
+def _spot_query(name: str, city: str) -> str:
+    """Build an Unsplash search query from a spot name + city.
+
+    Strips a leading '#2'-style dedupe suffix and noisy generic words so the
+    search keys on the real subject ('Griffith Observatory', 'Venice Canals').
+    """
+    base = name.split("#")[0].strip()
+    words = [w for w in base.split() if w.lower() not in _QUERY_STOPWORDS]
+    subject = " ".join(words) or base
+    return f"{subject} {city}".strip()
+
+
+def _require_unsplash_key() -> str:
+    # Read ONLY the Unsplash key from .env — NOT load_dotenv(), which would also
+    # pull the *_EMULATOR_HOST vars from .env into the process and redirect this
+    # seeder at local emulators instead of real Firebase. A real shell env var
+    # still wins over the .env value.
+    key = os.environ.get("UNSPLASH_ACCESS_KEY")
+    if not key:
+        try:
+            from dotenv import dotenv_values
+
+            key = dotenv_values(".env").get("UNSPLASH_ACCESS_KEY")
+        except ImportError:
+            pass
+    if not key:
+        sys.exit(
+            "[seed] UNSPLASH_ACCESS_KEY is not set.\n"
+            "       Create a free Access Key at https://unsplash.com/developers, then add to .env:\n"
+            "       UNSPLASH_ACCESS_KEY=<your-access-key>"
+        )
+    return key
+
+
+def unsplash_search(query: str, per_page: int, key: str, page: int = 1) -> list[str]:
+    """Return up to `per_page` landscape image URLs for the query (or [] on miss)."""
+    params = urllib.parse.urlencode(
+        {
+            "query": query,
+            "per_page": per_page,
+            "page": page,
+            "orientation": "landscape",
+            "content_filter": "high",
+        }
+    )
+    req = urllib.request.Request(
+        f"{UNSPLASH_SEARCH_URL}?{params}",
+        headers={"Authorization": f"Client-ID {key}", "Accept-Version": "v1"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.load(resp)
+    except Exception as e:
+        print(f"[seed]   ! Unsplash search failed for '{query}': {e}")
+        return []
+    return [r["urls"]["regular"] for r in data.get("results", [])]
+
+
+def _download_jpeg(url: str) -> bytes | None:
+    """Download an image and re-encode as EXIF-free JPEG (mirrors storage_service)."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "scout-seeder"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read()
+        img = Image.open(BytesIO(raw)).convert("RGB")
+        out = BytesIO()
+        img.save(out, format="JPEG", quality=85)
+        return out.getvalue()
+    except Exception as e:
+        print(f"[seed]   ! Photo download failed ({url[:60]}...): {e}")
+        return None
+
+
+_UNSPLASH_PER_PAGE = 30  # Unsplash search max per page
+
+
+def fetch_unique_images(query: str, key: str, count: int) -> list[bytes]:
+    """Fetch `count` DISTINCT real JPEGs for the query so no two reviews of a spot
+    ever share the same picture. Pages the Unsplash search (each page is one search
+    call against the rate limit) until it has enough unique URLs, then downloads
+    them. Returns however many it could get (possibly fewer than `count`)."""
+    urls: list[str] = []
+    seen: set[str] = set()
+    page = 1
+    while len(urls) < count and page <= 5:
+        batch = unsplash_search(query, _UNSPLASH_PER_PAGE, key, page=page)
+        if not batch:
+            break
+        for u in batch:
+            if u not in seen:
+                seen.add(u)
+                urls.append(u)
+        if len(batch) < _UNSPLASH_PER_PAGE:
+            break  # last page
+        page += 1
+    urls = urls[:count]
+    if not urls:
+        return []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(_download_jpeg, urls))
+    return [b for b in results if b]
+
+
+def upload_review_photos(bucket, bucket_name: str, review_id: str, images: list[bytes]) -> list[str]:
+    """Upload each image as its own blob under reviews/{review_id}/photos/ and
+    return the public URLs (same shape as storage_service._public_url)."""
+
+    def _upload(data: bytes) -> str:
+        path = f"reviews/{review_id}/photos/{uuid4()}.jpg"
+        bucket.blob(path).upload_from_string(data, content_type="image/jpeg")
+        return f"https://storage.googleapis.com/{bucket_name}/{path}"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        return list(pool.map(_upload, images))
+
+
+def _mostly(dominant: str, alternatives: list[str], p: float = 0.7) -> str:
+    """Return the spot's dominant value most of the time, an alternative otherwise,
+    so per-spot aggregates have a clear mode but aren't unrealistically unanimous."""
+    if random.random() < p:
+        return dominant
+    return random.choice([a for a in alternatives if a != dominant] or alternatives)
+
+
+def _mostly_bool(dominant: bool, p: float = 0.8) -> bool:
+    return dominant if random.random() < p else (not dominant)
+
+
+class _Bag:
+    """Draws items without repeats, reshuffling when exhausted — keeps a spot's
+    reviews from reusing the same note until the pool runs out."""
+
+    def __init__(self, items: list[str]):
+        self._items = list(items)
+        self._pool: list[str] = []
+
+    def draw(self) -> str:
+        if not self._pool:
+            self._pool = random.sample(self._items, len(self._items))
+        return self._pool.pop()
+
+
+def make_review(
+    review_id: str,
+    spot_id: str,
+    spot_doc: dict,
+    user_uid: str,
+    created_at: datetime,
+    photo_urls: list[str],
+    cfg: dict,
+    note: str,
+    gear: str,
+    comp: str,
+):
+    times = random.sample(cfg["best_times"], k=min(random.randint(1, 2), len(cfg["best_times"])))
+    seasons = random.sample(
+        cfg["best_seasons"], k=min(random.randint(1, 2), len(cfg["best_seasons"]))
+    )
     return review_id, {
         "spot_id": spot_id,
         "spot_name": spot_doc["name"],
@@ -254,18 +430,18 @@ def make_review(spot_id: str, spot_doc: dict, user_uid: str, created_at: datetim
         "admin_area": spot_doc["admin_area"],
         "user_id": user_uid,
         "photo_urls": photo_urls,
-        "overall_rating": random.choices([3, 4, 5], weights=[1, 3, 2])[0],
-        "notes": random.choice(NOTES_POOL),
+        "overall_rating": random.choices([3, 4, 5], weights=[1, 3, 4])[0],
+        "notes": note,
         "best_time_of_day": times,
-        "access_level": random.choices(ACCESS_LEVELS, weights=[3, 2, 1])[0],
-        "entrance_fee": random.choice(ENTRANCE_FEES),
-        "crowd_level": random.choices(CROWD_LEVELS, weights=[1, 3, 3, 1])[0],
-        "best_season": random.sample(SEASONS, k=random.randint(1, 2)),
-        "permit_required": random.choice([True, False]),
-        "drone_allowed": random.choice([True, False]),
-        "tripod_allowed": random.choice([True, False]),
-        "gear_recommendations": random.choice(GEAR_POOL),
-        "composition_hints": random.choice(COMP_POOL),
+        "access_level": _mostly(cfg["access_level"], ACCESS_LEVELS),
+        "entrance_fee": random.choice(cfg["entrance_fee_options"]),
+        "crowd_level": _mostly(cfg["crowd_level"], CROWD_LEVELS),
+        "best_season": seasons,
+        "permit_required": _mostly_bool(cfg["permit"]),
+        "drone_allowed": _mostly_bool(cfg["drone"]),
+        "tripod_allowed": _mostly_bool(cfg["tripod"]),
+        "gear_recommendations": gear,
+        "composition_hints": comp,
         "created_at": created_at,
     }
 
@@ -273,40 +449,69 @@ def make_review(spot_id: str, spot_doc: dict, user_uid: str, created_at: datetim
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--project", required=True, help="Firebase project ID (must start with 'scout-dev')"
+        "--project", required=True, help=f"Firebase project ID (must be '{ALLOWED_PROJECT}')"
     )
+    parser.add_argument("--bucket", default=DEFAULT_BUCKET, help="Cloud Storage bucket for photos")
     parser.add_argument("--users", type=int, default=20)
     parser.add_argument("--spots", type=int, default=50)
     parser.add_argument("--min-reviews", type=int, default=4)
     parser.add_argument("--max-reviews", type=int, default=12)
-    parser.add_argument("--center-lat", type=float, default=DEFAULT_CENTER_LAT)
-    parser.add_argument("--center-lng", type=float, default=DEFAULT_CENTER_LNG)
-    parser.add_argument("--radius-km", type=float, default=10.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
     args = parser.parse_args()
+
+    if args.project != ALLOWED_PROJECT:
+        sys.exit(f"[seed] Refusing to run: --project must be '{ALLOWED_PROJECT}' (got '{args.project}').")
+
+    # Curated real spots define the universe — cap --spots to what we have authored.
+    spots_to_seed = SEED_SPOTS[: args.spots] if args.spots else SEED_SPOTS
+    if args.spots > len(SEED_SPOTS):
+        print(f"[seed] Only {len(SEED_SPOTS)} curated spots exist — seeding all of them.")
+
+    # Force REAL Firebase. Strip any emulator hosts (these are set in .env for
+    # local dev and would otherwise redirect writes to dead local emulators).
+    for var in ("FIRESTORE_EMULATOR_HOST", "FIREBASE_AUTH_EMULATOR_HOST", "STORAGE_EMULATOR_HOST"):
+        if os.environ.pop(var, None):
+            print(f"[seed] Ignoring {var} — writing to REAL Firebase.")
+
+    unsplash_key = _require_unsplash_key()
+    geocoding_key = _require_geocoding_key()
+
+    # Load the geocode cache so reruns don't re-call the Geocoding API.
+    geocode_cache: dict = {}
+    if os.path.exists(GEOCODE_CACHE_PATH):
+        try:
+            with open(GEOCODE_CACHE_PATH) as f:
+                geocode_cache = json.load(f)
+        except Exception:
+            geocode_cache = {}
 
     cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     using_service_account = bool(cred_path and os.path.exists(cred_path))
     auth_method = f"service account: {cred_path}" if using_service_account else "gcloud ADC"
 
     if not args.yes:
-        print(f"[seed] About to write fake data to REAL Firestore project: {args.project}")
+        print(f"[seed] About to write seed data to REAL Firestore project: {args.project}")
+        print(f"       Photos → REAL Storage bucket: {args.bucket} (source: Unsplash)")
         print(f"       Auth: {auth_method}")
+        print(f"       {len(spots_to_seed)} real spots; ~{len(spots_to_seed)} Unsplash "
+              "searches (demo keys allow 50/hour).")
         confirm = input("Type 'yes' to continue: ").strip().lower()
         if confirm != "yes":
             sys.exit("[seed] Aborted.")
 
     random.seed(args.seed)
 
-    # ---- Init Admin SDK against the real project ----
+    # ---- Init Admin SDK against the real project (with Storage bucket) ----
+    init_opts = {"projectId": args.project, "storageBucket": args.bucket}
     if using_service_account:
         cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred, {"projectId": args.project})
+        firebase_admin.initialize_app(cred, init_opts)
     else:
         # Application Default Credentials from `gcloud auth application-default login`
-        firebase_admin.initialize_app(options={"projectId": args.project})
+        firebase_admin.initialize_app(options=init_opts)
     db = firestore.client()
+    bucket = storage.bucket()
 
     now = datetime.now(timezone.utc)
 
@@ -346,46 +551,91 @@ def main():
     # ---- 2. Write user docs (review_count filled in after reviews are generated) ----
     review_counts: dict[str, int] = {u["uid"]: 0 for u in users}
 
-    # ---- 3. Generate spots and reviews ----
+    # ---- 3. Generate spots and reviews from the curated real-spot list ----
     spot_ids = []
     total_reviews = 0
-    for i in range(args.spots):
-        spot_id = str(uuid4())
-        spot_ids.append(spot_id)
-        lat, lng = jittered_coord(args.center_lat, args.center_lng, args.radius_km)
-        if i < len(SPOT_NAMES):
-            name = SPOT_NAMES[i]
-        else:
-            # Past the pool, cycle names with a suffix so they stay readable + unique.
-            name = f"{SPOT_NAMES[i % len(SPOT_NAMES)]} #{i // len(SPOT_NAMES) + 1}"
+    for cfg in spots_to_seed:
+        name = cfg["name"]
 
-        spot_created = now - timedelta(days=random.randint(7, 90))
-        spot_doc = {
-            "name": name,
-            "public_lat": lat,
-            "public_lng": lng,
-            "city": "Los Angeles",
-            "admin_area": "California",
-            "country": "United States",
-            "created_at": spot_created,
-            **empty_aggregates(),
-        }
+        # Real coordinates + real city/admin/country via forward geocoding (cached).
+        geo = forward_geocode(cfg["geocode_query"], geocoding_key, geocode_cache)
+        if not geo:
+            print(f"[seed]   ! Could not geocode '{name}' — skipping.")
+            continue
 
-        # Distinct authors per spot — one review per user per spot (matches the API
-        # rule). Capped at the user count; guarantee the personal test user is one.
+        # Decide the review set up front so we know exactly how many UNIQUE photos
+        # to fetch — no image is ever shared between two reviews of this spot.
+        # Distinct authors per spot (one review per user per spot, matching the API
+        # rule); guarantee the personal test user is one of them.
         num_reviews = min(random.randint(args.min_reviews, args.max_reviews), len(users))
         authors = random.sample(users, num_reviews)
         if personal_user not in authors:
             authors[-1] = personal_user
+        desired = [random.randint(1, 3) for _ in range(num_reviews)]
+
+        # Fetch enough DISTINCT real photos for every review (override the search
+        # with photo_query when the spot name alone returns too few).
+        query = cfg.get("photo_query") or _spot_query(name, geo["city"])
+        images = fetch_unique_images(query, unsplash_key, sum(desired))
+        if not images:
+            print(f"[seed]   ! No photos for '{query}' — skipping spot '{name}'.")
+            continue
+
+        # Every review gets at least one UNIQUE photo (never shared between reviews).
+        # If Unsplash returned fewer images than planned reviews, trim the review
+        # count rather than reuse a photo; spread any surplus as extra photos.
+        effective = min(num_reviews, len(images))
+        authors = authors[:effective]
+        if personal_user not in authors and effective:
+            authors[-1] = personal_user
+        counts = [1] * effective
+        extra = len(images) - effective
+        for i in range(effective):
+            if extra <= 0:
+                break
+            add = min(desired[i] - 1, extra)
+            counts[i] += add
+            extra -= add
+
+        spot_id = str(uuid4())
+        spot_ids.append(spot_id)
+        spot_created = now - timedelta(days=random.randint(7, 90))
+        spot_doc = {
+            "name": name,
+            "public_lat": geo["lat"],
+            "public_lng": geo["lng"],
+            "city": geo["city"],
+            "admin_area": geo["admin_area"],
+            "country": geo["country"],
+            "created_at": spot_created,
+            **empty_aggregates(),
+        }
+        print(
+            f"[seed] '{name}' @ {geo['city']} ({geo['lat']:.4f},{geo['lng']:.4f}) "
+            f"→ {effective} reviews, {sum(counts)} unique photos"
+        )
+
+        # Per-spot non-repeating draws for the hand-authored text fields.
+        note_bag = _Bag(cfg["notes"])
+        gear_bag = _Bag(cfg["gear"])
+        comp_bag = _Bag(cfg["composition"])
 
         review_offsets = sorted(
             random.uniform(0.5, (now - spot_created).total_seconds() / 86400.0)
-            for _ in range(num_reviews)
+            for _ in range(effective)
         )
         reviews = []
-        for author, offset_days in zip(authors, review_offsets):
+        img_idx = 0  # hand out disjoint slices of the unique-image pool
+        for author, offset_days, want in zip(authors, review_offsets, counts):
+            chosen = images[img_idx : img_idx + want]
+            img_idx += want
             created_at = spot_created + timedelta(days=offset_days)
-            review_id, review = make_review(spot_id, spot_doc, author["uid"], created_at)
+            review_id = str(uuid4())
+            photo_urls = upload_review_photos(bucket, args.bucket, review_id, chosen)
+            _, review = make_review(
+                review_id, spot_id, spot_doc, author["uid"], created_at, photo_urls,
+                cfg, note_bag.draw(), gear_bag.draw(), comp_bag.draw(),
+            )
             reviews.append((review_id, review))
             review_counts[author["uid"]] += 1
             spot_doc = update_or_init_aggregates(spot_doc, review, review_id)
@@ -396,6 +646,13 @@ def main():
             batch.set(db.collection("reviews").document(rid), review)
         batch.commit()
         total_reviews += len(reviews)
+
+    # Persist the geocode cache for future reruns.
+    try:
+        with open(GEOCODE_CACHE_PATH, "w") as f:
+            json.dump(geocode_cache, f, indent=2)
+    except Exception as e:
+        print(f"[seed] (could not save geocode cache: {e})")
 
     # ---- 4. Write user docs now that review_count is known ----
     user_batch = db.batch()
@@ -415,11 +672,11 @@ def main():
         )
     user_batch.commit()
 
-    print(f"[seed] Wrote {args.spots} spots, {total_reviews} reviews to {args.project}.")
+    print(f"[seed] Wrote {len(spot_ids)} spots, {total_reviews} reviews to {args.project}.")
 
     print("\n=== Seed summary ===")
     print(f"Project: {args.project}")
-    print(f"Center: lat={args.center_lat} lng={args.center_lng} radius_km={args.radius_km}")
+    print(f"Spots seeded: {len(spot_ids)} / {len(spots_to_seed)} curated")
     print("\nUsers (created in Firebase Auth — sign in from iOS to get a real ID token):")
     for u in users:
         print(f"  - {u['email']}  uid={u['uid']}")

@@ -80,7 +80,7 @@ async def submit_review(
     """
     Submit a review for an existing spot (multipart).
 
-    Photos: repeated `photos` key, one part per file, JPEG only, ≤10MB each, 1–10 total.
+    Photos: repeated `photos` key, one part per file, JPEG only, ≤10MB each, 1–5 total.
     All content fields except overall_rating are optional; enums are validated by
     the ReviewCreate model (exact capitalized strings, e.g. "Easy" not "easy").
     """
