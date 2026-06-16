@@ -517,7 +517,7 @@ SEED_SPOTS = [
     {
         "name": "Union Station",
         "geocode_query": "Union Station, Los Angeles, CA",
-        "photo_query": "Union Station Los Angeles architecture interior",
+        "photo_query": "Union Station Los Angeles",
         "notes": [
             "The old waiting hall is stunning, those big leather chairs and the "
             "light pouring through the tall windows.",
@@ -877,7 +877,7 @@ SEED_SPOTS = [
     {
         "name": "Grand Park",
         "geocode_query": "Grand Park, Los Angeles, CA",
-        "photo_query": "Los Angeles downtown park fountain city hall",
+        "photo_query": "Los Angeles City Hall fountain",
         "notes": [
             "The pink chairs and the fountain with City Hall behind it is the "
             "signature downtown frame.",
@@ -1013,7 +1013,7 @@ SEED_SPOTS = [
     {
         "name": "Parker Mesa Overlook",
         "geocode_query": "Parker Mesa Overlook, Topanga, CA",
-        "photo_query": "Topanga Los Angeles ocean coast overlook",
+        "photo_query": "Topanga coast ocean view",
         "notes": [
             "Hands down one of the best coastal panoramas in LA, you see the whole "
             "coastline and the ocean from up here.",
@@ -1184,7 +1184,7 @@ SEED_SPOTS = [
     {
         "name": "Bradbury Building",
         "geocode_query": "Bradbury Building, Los Angeles, CA",
-        "photo_query": "historic building atrium staircase ironwork",
+        "photo_query": "ornate atrium staircase ironwork",
         "notes": [
             "The interior atrium is jaw dropping, all wrought iron, warm wood, and "
             "light pouring down from the glass roof.",

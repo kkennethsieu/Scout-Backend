@@ -457,6 +457,12 @@ def main():
     parser.add_argument("--min-reviews", type=int, default=4)
     parser.add_argument("--max-reviews", type=int, default=12)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Only seed curated spots whose name isn't already in Firestore "
+        "(top-up after a partial run, e.g. an Unsplash rate-limit cutoff)",
+    )
     parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
     args = parser.parse_args()
 
@@ -552,6 +558,15 @@ def main():
     review_counts: dict[str, int] = {u["uid"]: 0 for u in users}
 
     # ---- 3. Generate spots and reviews from the curated real-spot list ----
+    if args.skip_existing:
+        existing_names = {s.to_dict().get("name") for s in db.collection("spots").stream()}
+        before = len(spots_to_seed)
+        spots_to_seed = [c for c in spots_to_seed if c["name"] not in existing_names]
+        print(
+            f"[seed] --skip-existing: {before - len(spots_to_seed)} already in Firestore, "
+            f"{len(spots_to_seed)} to seed."
+        )
+
     spot_ids = []
     total_reviews = 0
     for cfg in spots_to_seed:
