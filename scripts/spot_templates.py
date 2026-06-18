@@ -1,0 +1,388 @@
+"""Category content templates for auto-discovered spots (hybrid generation).
+
+Hand-authored spots (scripts/seed_spots.py) carry their own bespoke notes. Spots
+found by scripts/discover_spots.py instead carry a `category`, and the seeder
+resolves their review text from these per-category pools, weaving in the spot's
+`{name}` and `{city}` so each one still reads tailored rather than generic.
+
+Note strings use {name} / {city} placeholders; the seeder calls .format() on them
+per review. Enum values must match the API schema (BEST_TIMES / ACCESS_LEVELS /
+CROWD_LEVELS / SEASONS in scripts/seed_real_data.py).
+
+CATEGORY_QUERIES drives discovery (each query is tagged with its category).
+CATEGORY_PHOTO_QUERY gives a reliable Unsplash/Pexels search base per category,
+since an obscure exact spot name often returns no stock photos.
+"""
+
+DEFAULT_CATEGORY = "viewpoint"
+
+# Place-search queries run at each anchor, grouped by the category they imply.
+CATEGORY_QUERIES = {
+    "viewpoint": ["scenic overlook", "scenic viewpoint", "vista point"],
+    "beach": ["state beach", "beach", "cove"],
+    "pier": ["pier", "boardwalk"],
+    "trail_waterfall": ["waterfall", "hiking trail", "canyon trail"],
+    "architecture": ["historic landmark", "famous building", "cathedral"],
+    "garden": ["botanical garden", "japanese garden"],
+    "park_skyline": ["city park", "hilltop park"],
+    "harbor": ["marina", "harbor"],
+    "lake": ["lake", "reservoir"],
+    "mural_street": ["arts district", "mural"],
+}
+
+# Reliable stock-photo search base per category (city is appended by discovery).
+CATEGORY_PHOTO_QUERY = {
+    "viewpoint": "scenic overlook landscape",
+    "beach": "beach coast ocean",
+    "pier": "pier ocean sunset",
+    "trail_waterfall": "waterfall forest trail",
+    "architecture": "historic architecture building",
+    "garden": "botanical garden flowers",
+    "park_skyline": "city park skyline",
+    "harbor": "harbor marina boats",
+    "lake": "lake reflection mountains",
+    "mural_street": "street mural colorful",
+}
+
+# NOTE: discovered-spot notes are category-generic on purpose. They avoid
+# specific unverifiable claims (tide pools, parking, gate hours, wildlife) and
+# stick to photography craft that holds true for the category regardless of the
+# exact spot, so nothing reads as false. Per-spot accuracy (crowd, rating, fee,
+# description) is grounded from real Places data by discover_spots.py.
+TEMPLATES = {
+    "viewpoint": {
+        "notes": [
+            "{name} opens up to a really nice wide view, one of the better spots to "
+            "shoot around {city}.",
+            "Golden hour is my favorite time here, the low light adds a lot of depth.",
+            "Stick around for blue hour, it usually gets pretty as the light fades.",
+            "A longer lens lets you compress the distance and make it feel bigger.",
+            "Clear days, especially after some wind, give you the least hazy view.",
+            "Early morning tends to be the calmest time to shoot.",
+            "Bring a tripod if you want to keep shooting into the evening.",
+            "Worth scouting your composition before the light gets good.",
+            "A wide lens grabs the whole scene, but the details reward a zoom too.",
+            "Side light near sunrise or sunset really shapes the landscape.",
+        ],
+        "gear": [
+            "A wide lens for the full sweep of the view.",
+            "A 70 to 200 to compress the distance and layers.",
+            "A tripod for golden and blue hour.",
+            "A polarizer to cut haze and deepen the sky.",
+        ],
+        "composition": [
+            "Layer a foreground, the middle, and the distance for depth.",
+            "Use a path or rock as a line leading into the view.",
+            "Catch the light raking across the scene near sunset.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Sunrise"],
+        "best_seasons": ["Fall", "Winter", "YearRound"],
+        "access_level": "Moderate",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    "beach": {
+        "notes": [
+            "Sunset over the water is the classic shot at {name}.",
+            "Low tide usually gives you more foreground to work with.",
+            "A long exposure smooths the surf into a soft blur.",
+            "Wet sand can mirror the sky colors when the timing is right.",
+            "Bring a cloth, sea spray is just part of shooting at the coast.",
+            "Mornings tend to be the quietest for clean shots.",
+            "The light goes warm and soft in the last hour before sunset.",
+            "A wide lens suits the open beach and the big sky.",
+            "Look for a rock or some driftwood to anchor the foreground.",
+            "Blue hour after sunset can hold really nice color here.",
+        ],
+        "gear": [
+            "A wide lens for the open beach and the big sky.",
+            "An ND filter for silky long exposure surf.",
+            "A microfiber cloth for the sea spray.",
+            "A tripod for blue hour reflections on the wet sand.",
+        ],
+        "composition": [
+            "Use the wet sand to mirror the sunset colors.",
+            "Add a rock or driftwood as a foreground anchor.",
+            "Let the shoreline lead off into the distance.",
+        ],
+        "best_times": ["GoldenHour", "Sunrise", "BlueHour"],
+        "best_seasons": ["Summer", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0, 0.0, 3.0, 12.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    "pier": {
+        "notes": [
+            "The pier at {name} frames up nicely against a sunset.",
+            "Blue hour, once any lights come on, is usually the prettiest time.",
+            "Low tide can leave wet sand that reflects the structure.",
+            "A long exposure smooths the water and tidies up the scene.",
+            "Walking out gives you a different angle back toward the {city} coast.",
+            "Sunset off the end of the pier is the easy reliable frame.",
+            "The posts and lines make for fun leading lines and patterns.",
+            "Evenings can get busy, so go early if you want it quieter.",
+            "A wide lens helps you take in the whole structure.",
+            "Bring a tripod for the dusk and any night shots.",
+        ],
+        "gear": [
+            "A wide lens for the pier and the big sky.",
+            "An ND to smooth the water at sunset.",
+            "A tripod for the blue hour and night shots.",
+            "A longer lens for distant details.",
+        ],
+        "composition": [
+            "Silhouette the pier against the setting sun.",
+            "Use wet sand at low tide to mirror the structure.",
+            "Line up the posts as a repeating leading line.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Night"],
+        "best_seasons": ["Summer", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    "trail_waterfall": {
+        "notes": [
+            "{name} is a solid hike, wear real shoes and bring water.",
+            "The light is softest early or late, midday can get harsh on the trail.",
+            "Overcast days are nice out here, the light stays even.",
+            "A polarizer helps with glare on any water or wet rock.",
+            "Pack light since you are carrying your gear the whole way.",
+            "Spring tends to be the greenest, especially after rain.",
+            "Give yourself time, the good light is worth waiting for.",
+            "A wide lens suits the scenery, a longer one picks out details.",
+            "Mornings are usually cooler and quieter on the trail.",
+            "Watch your footing if it has rained recently.",
+        ],
+        "gear": [
+            "An ND filter to slow the shutter for moving water.",
+            "A polarizer for wet rocks and any reflections.",
+            "A light travel tripod you don't mind hauling.",
+            "A wide lens for the scenery and a zoom for details.",
+        ],
+        "composition": [
+            "Use the trail or a stream as a line leading in.",
+            "Anchor the foreground with a rock for depth.",
+            "Go vertical to take in tall scenery.",
+        ],
+        "best_times": ["Midday", "GoldenHour", "Sunrise"],
+        "best_seasons": ["Spring", "Winter", "Fall"],
+        "access_level": "Moderate",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0, 0.0, 5.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    "architecture": {
+        "notes": [
+            "The architecture at {name} is the draw, lots of lines and detail to "
+            "work with.",
+            "Soft overcast light is your friend here, it avoids harsh hot spots.",
+            "Early or late light rakes across the surfaces and brings out texture.",
+            "Look up, the upper details are often the best part.",
+            "Blue hour, if it stays open, can look great with the building lit.",
+            "It is a recognizable spot in {city}, so it photographs well.",
+            "Hunt for symmetry, the geometry rewards a centered frame.",
+            "Be quick and respectful if it is a working or sacred space.",
+            "A wide lens helps in tight spots, a fast prime helps in dim light.",
+            "Reflections off glass and stone can make nice abstracts.",
+        ],
+        "gear": [
+            "A wide lens for the facade and tight interiors.",
+            "A 24 to 70 as a flexible walkaround.",
+            "A fast prime for handheld low light shots.",
+            "A polarizer to manage reflections on glass and stone.",
+        ],
+        "composition": [
+            "Find symmetry and shoot it dead center.",
+            "Use the building's lines as strong leading lines.",
+            "Frame people small against it for a sense of scale.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Sunrise"],
+        "best_seasons": ["YearRound", "Winter", "Fall"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0, 0.0, 15.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
+    },
+    "garden": {
+        "notes": [
+            "{name} is a calm green spot, great for soft detail and color.",
+            "Spring usually brings the most color if you can time it.",
+            "Soft overcast light is perfect for flowers and foliage.",
+            "Early morning tends to be quietest and the light is gentle.",
+            "Get in close for the little details and textures.",
+            "Look for paths, ponds, and bridges as ready made compositions.",
+            "Golden hour backlights leaves and petals nicely.",
+            "A peaceful place in {city} to slow down and shoot deliberately.",
+            "A longer lens isolates a single bloom against a soft background.",
+            "Still water in the garden can give you nice reflections.",
+        ],
+        "gear": [
+            "A macro or close focusing lens for the details.",
+            "A 24 to 70 for the wider garden scenes.",
+            "A longer lens to isolate blooms with soft backgrounds.",
+            "A polarizer to deepen greens and cut leaf glare.",
+        ],
+        "composition": [
+            "Isolate one bloom against a soft background.",
+            "Use a path or bridge as a leading line.",
+            "Reflect the scene in still water for symmetry.",
+        ],
+        "best_times": ["GoldenHour", "Sunrise", "Midday"],
+        "best_seasons": ["Spring", "Summer", "Fall"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0, 0.0, 15.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
+    },
+    "park_skyline": {
+        "notes": [
+            "{name} is a nice green spot to shoot from, a local favorite around "
+            "{city}.",
+            "Higher ground usually gives you the cleanest line of sight.",
+            "Golden hour lights the grass and the scene glows.",
+            "Usually quieter than the famous overlooks, easy to find a calm spot.",
+            "Clear days give you the sharpest distant view.",
+            "A longer lens compresses the distance behind the foreground.",
+            "Blue hour can be worth the wait as the light fades.",
+            "Lots of room to roam and try different foregrounds.",
+            "Mornings are quiet and the light is soft and warm.",
+            "Look for a tree or path to anchor the foreground.",
+        ],
+        "gear": [
+            "A 70 to 200 to compress the distance behind the foreground.",
+            "A wide lens for the foreground and big sky.",
+            "A tripod for golden and blue hour.",
+            "A grad ND to balance a bright sky.",
+        ],
+        "composition": [
+            "Frame the distance behind a green foreground.",
+            "Use a path or tree line to lead the eye.",
+            "Layer foreground, park, and distance for depth.",
+        ],
+        "best_times": ["GoldenHour", "BlueHour", "Sunrise"],
+        "best_seasons": ["Fall", "Winter", "Spring"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    "harbor": {
+        "notes": [
+            "{name} is full of boats and masts, good for reflections and a calm mood.",
+            "Sunrise usually gives you still water and nice reflections.",
+            "The masts make a forest of vertical lines to play with.",
+            "Sunset over the water from the edge is warm and easy.",
+            "A long exposure at dusk smooths the water out.",
+            "A mellow walkable spot in {city}, easy to spend an hour.",
+            "A polarizer cuts glare and saturates the water.",
+            "Look for a colorful boat to anchor a composition.",
+            "Early light catches the hulls and the water goes glassy.",
+            "Reflections are usually best before the wind picks up midday.",
+        ],
+        "gear": [
+            "A 24 to 70 for the harbor and boat scenes.",
+            "A tripod for sunrise reflections and dusk long exposures.",
+            "A polarizer to cut glare off the water.",
+            "A longer lens to isolate boats and details.",
+        ],
+        "composition": [
+            "Mirror the masts and sky in still water.",
+            "Use a line of boats as a repeating leading line.",
+            "Silhouette the masts against a sunset sky.",
+        ],
+        "best_times": ["Sunrise", "GoldenHour", "BlueHour"],
+        "best_seasons": ["Summer", "Fall", "YearRound"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    "lake": {
+        "notes": [
+            "{name} usually gets glassy early, so the reflections reward an early "
+            "start.",
+            "Still mornings double the scene in the water.",
+            "Golden hour warms up the shoreline and the water lights up.",
+            "A polarizer can cut or keep the reflection, play with the angle.",
+            "Look for a foreground rock or reeds to anchor the shot.",
+            "A peaceful spot around {city}, calmest early before the wind.",
+            "A long exposure makes the water glassy at dusk.",
+            "The light and color are often best in the hour after sunrise.",
+            "Spring and summer tend to bring the greenest shoreline.",
+            "Wind usually picks up midday and flattens the reflections.",
+        ],
+        "gear": [
+            "A wide lens for the lake and the reflection.",
+            "A polarizer to control the reflection and glare.",
+            "A tripod for sunrise and dusk long exposures.",
+            "A grad ND to balance a bright sky.",
+        ],
+        "composition": [
+            "Mirror the sky and shoreline in still water.",
+            "Anchor the foreground with a rock or reeds.",
+            "Place the horizon low to feature a colorful sky.",
+        ],
+        "best_times": ["Sunrise", "GoldenHour", "BlueHour"],
+        "best_seasons": ["Spring", "Summer", "Fall"],
+        "access_level": "Easy",
+        "crowd_level": "Light",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": True,
+    },
+    "mural_street": {
+        "notes": [
+            "{name} has a lot of street art and color, fun for bold shots.",
+            "Morning light hits the walls well and it is usually quieter then.",
+            "Get a person walking past for scale and a bit of life.",
+            "Street art changes often around {city}, so there is usually something "
+            "new.",
+            "Golden hour down the street gives warm light and long shadows.",
+            "It is flat and walkable, easy to wander and shoot.",
+            "Look for little details and storefronts between the big pieces.",
+            "Weekends get livelier if you like people in your shots.",
+            "A fast prime keeps it simple and candid here.",
+            "Fill the frame with a wall for a bold block of color.",
+        ],
+        "gear": [
+            "A 35 or 50 prime for street and storefronts.",
+            "A wide lens for the full walls up close.",
+            "A fast lens for candid people shots.",
+            "Honestly a phone works great for this one too.",
+        ],
+        "composition": [
+            "Get a person walking past for scale and life.",
+            "Shoot down the street into low sun for long shadows.",
+            "Fill the frame with a wall as a bold color block.",
+        ],
+        "best_times": ["GoldenHour", "Midday", "Sunrise"],
+        "best_seasons": ["YearRound", "Spring", "Summer"],
+        "access_level": "Easy",
+        "crowd_level": "Moderate",
+        "entrance_fee_options": [0.0],
+        "permit": False,
+        "drone": False,
+        "tripod": False,
+    },
+}

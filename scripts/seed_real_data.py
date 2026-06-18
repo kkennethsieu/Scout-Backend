@@ -54,6 +54,11 @@ PERSONAL_TEST_UID = "32WaqmcxZ2e6Zg5aGR9eMNvwokB2"
 # Curated real spots with hand-authored, location-specific notes (see seed_spots.py).
 from scripts.seed_spots import SEED_SPOTS  # noqa: E402
 
+# Category content templates for auto-discovered spots (see spot_templates.py).
+from scripts.spot_templates import DEFAULT_CATEGORY, TEMPLATES  # noqa: E402
+
+DISCOVERED_PATH = os.path.join(os.path.dirname(__file__), "discovered_spots.json")
+
 # Enum value pools — used by _mostly() to pick occasional off-mode values.
 # Must match the API schema (app/schemas/review.py).
 BEST_TIMES = ["Sunrise", "GoldenHour", "BlueHour", "Midday", "Night"]
@@ -188,7 +193,15 @@ def update_or_init_aggregates(spot: dict, review: dict, review_id: str) -> dict:
 # reviews, so total search calls == number of distinct spot queries.
 
 UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
+PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+
+# Pexels (API + image CDN) rejects the default python-urllib User-Agent with 403,
+# so send a browser-like one on outbound photo requests.
+BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
 GEOCODE_CACHE_PATH = os.path.join(os.path.dirname(__file__), ".geocode_cache.json")
 
 
@@ -297,6 +310,37 @@ def _require_unsplash_key() -> str:
     return key
 
 
+def _get_pexels_key() -> str | None:
+    """Optional second photo source. Returns the key or None (Unsplash-only)."""
+    key = os.environ.get("PEXELS_API_KEY")
+    if not key:
+        try:
+            from dotenv import dotenv_values
+
+            key = dotenv_values(".env").get("PEXELS_API_KEY")
+        except ImportError:
+            pass
+    return key
+
+
+def pexels_search(query: str, per_page: int, key: str, page: int = 1) -> list[str]:
+    """One Pexels search page → list of landscape image URLs (or [] on miss)."""
+    params = urllib.parse.urlencode(
+        {"query": query, "per_page": per_page, "page": page, "orientation": "landscape"}
+    )
+    req = urllib.request.Request(
+        f"{PEXELS_SEARCH_URL}?{params}",
+        headers={"Authorization": key, "User-Agent": BROWSER_UA},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.load(resp)
+    except Exception as e:
+        print(f"[seed]   ! Pexels search failed for '{query}': {e}")
+        return []
+    return [p["src"]["large"] for p in data.get("photos", [])]
+
+
 def unsplash_search(query: str, per_page: int, key: str, page: int = 1) -> list[str]:
     """Return up to `per_page` landscape image URLs for the query (or [] on miss)."""
     params = urllib.parse.urlencode(
@@ -324,7 +368,7 @@ def unsplash_search(query: str, per_page: int, key: str, page: int = 1) -> list[
 def _download_jpeg(url: str) -> bytes | None:
     """Download an image and re-encode as EXIF-free JPEG (mirrors storage_service)."""
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "scout-seeder"})
+        req = urllib.request.Request(url, headers={"User-Agent": BROWSER_UA})
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read()
         img = Image.open(BytesIO(raw)).convert("RGB")
@@ -337,27 +381,42 @@ def _download_jpeg(url: str) -> bytes | None:
 
 
 _UNSPLASH_PER_PAGE = 30  # Unsplash search max per page
+_PEXELS_PER_PAGE = 50  # Pexels search max per page
 
 
-def fetch_unique_images(query: str, key: str, count: int) -> list[bytes]:
-    """Fetch `count` DISTINCT real JPEGs for the query so no two reviews of a spot
-    ever share the same picture. Pages the Unsplash search (each page is one search
-    call against the rate limit) until it has enough unique URLs, then downloads
-    them. Returns however many it could get (possibly fewer than `count`)."""
-    urls: list[str] = []
-    seen: set[str] = set()
+def _collect_urls(search_fn, query: str, key: str, per_page: int, count: int, seen: set) -> list[str]:
+    """Page one provider until it yields `count` new unique URLs (or runs dry)."""
+    out: list[str] = []
     page = 1
-    while len(urls) < count and page <= 5:
-        batch = unsplash_search(query, _UNSPLASH_PER_PAGE, key, page=page)
+    while len(out) < count and page <= 5:
+        batch = search_fn(query, per_page, key, page=page)
         if not batch:
             break
         for u in batch:
             if u not in seen:
                 seen.add(u)
-                urls.append(u)
-        if len(batch) < _UNSPLASH_PER_PAGE:
+                out.append(u)
+        if len(batch) < per_page:
             break  # last page
         page += 1
+    return out
+
+
+def fetch_unique_images(
+    query: str, count: int, unsplash_key: str, pexels_key: str | None = None
+) -> list[bytes]:
+    """Fetch `count` DISTINCT real JPEGs so no two reviews of a spot share a photo.
+
+    Pulls from Pexels first (larger free quota) then tops up from Unsplash, so the
+    tiny Unsplash hourly cap is conserved and the run survives one source being
+    rate-limited. Returns however many it could get (possibly fewer than `count`)."""
+    urls: list[str] = []
+    seen: set[str] = set()
+    if pexels_key:
+        urls += _collect_urls(pexels_search, query, pexels_key, _PEXELS_PER_PAGE, count, seen)
+    if len(urls) < count:
+        need = count - len(urls)
+        urls += _collect_urls(unsplash_search, query, unsplash_key, _UNSPLASH_PER_PAGE, need, seen)
     urls = urls[:count]
     if not urls:
         return []
@@ -430,7 +489,7 @@ def make_review(
         "admin_area": spot_doc["admin_area"],
         "user_id": user_uid,
         "photo_urls": photo_urls,
-        "overall_rating": random.choices([3, 4, 5], weights=[1, 3, 4])[0],
+        "overall_rating": random.choices([3, 4, 5], weights=cfg.get("rating_weights") or [1, 3, 4])[0],
         "notes": note,
         "best_time_of_day": times,
         "access_level": _mostly(cfg["access_level"], ACCESS_LEVELS),
@@ -453,15 +512,21 @@ def main():
     )
     parser.add_argument("--bucket", default=DEFAULT_BUCKET, help="Cloud Storage bucket for photos")
     parser.add_argument("--users", type=int, default=20)
-    parser.add_argument("--spots", type=int, default=50)
+    parser.add_argument("--spots", type=int, default=0, help="Cap total spots (0 = all)")
     parser.add_argument("--min-reviews", type=int, default=4)
     parser.add_argument("--max-reviews", type=int, default=12)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
+        "--with-discovered",
+        action="store_true",
+        help=f"Also seed auto-discovered spots from {os.path.basename(DISCOVERED_PATH)} "
+        "(content resolved from spot_templates by category)",
+    )
+    parser.add_argument(
         "--skip-existing",
         action="store_true",
-        help="Only seed curated spots whose name isn't already in Firestore "
-        "(top-up after a partial run, e.g. an Unsplash rate-limit cutoff)",
+        help="Only seed spots whose name isn't already in Firestore "
+        "(top-up after a partial run, e.g. a photo rate-limit cutoff)",
     )
     parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
     args = parser.parse_args()
@@ -469,10 +534,31 @@ def main():
     if args.project != ALLOWED_PROJECT:
         sys.exit(f"[seed] Refusing to run: --project must be '{ALLOWED_PROJECT}' (got '{args.project}').")
 
-    # Curated real spots define the universe — cap --spots to what we have authored.
-    spots_to_seed = SEED_SPOTS[: args.spots] if args.spots else SEED_SPOTS
-    if args.spots > len(SEED_SPOTS):
-        print(f"[seed] Only {len(SEED_SPOTS)} curated spots exist — seeding all of them.")
+    # Hand-authored spots, plus auto-discovered ones if requested.
+    spots_to_seed = list(SEED_SPOTS)
+    if args.with_discovered:
+        if not os.path.exists(DISCOVERED_PATH):
+            sys.exit(f"[seed] --with-discovered set but {DISCOVERED_PATH} not found. "
+                     "Run scripts.discover_spots first.")
+        with open(DISCOVERED_PATH) as f:
+            discovered = json.load(f)
+        spots_to_seed += discovered
+        print(f"[seed] Loaded {len(discovered)} discovered spots (+{len(SEED_SPOTS)} curated).")
+    # Dedupe by name within this run. Curated spots come first so they win over any
+    # same-named discovered spot. (--skip-existing only dedupes against names
+    # already in Firestore, not collisions inside a single run.)
+    seen_names: set[str] = set()
+    deduped = []
+    for c in spots_to_seed:
+        if c["name"] in seen_names:
+            continue
+        seen_names.add(c["name"])
+        deduped.append(c)
+    if len(deduped) < len(spots_to_seed):
+        print(f"[seed] Deduped {len(spots_to_seed) - len(deduped)} same-named spot(s).")
+    spots_to_seed = deduped
+    if args.spots:
+        spots_to_seed = spots_to_seed[: args.spots]
 
     # Force REAL Firebase. Strip any emulator hosts (these are set in .env for
     # local dev and would otherwise redirect writes to dead local emulators).
@@ -481,6 +567,7 @@ def main():
             print(f"[seed] Ignoring {var} — writing to REAL Firebase.")
 
     unsplash_key = _require_unsplash_key()
+    pexels_key = _get_pexels_key()  # optional second photo source
     geocoding_key = _require_geocoding_key()
 
     # Load the geocode cache so reruns don't re-call the Geocoding API.
@@ -496,12 +583,13 @@ def main():
     using_service_account = bool(cred_path and os.path.exists(cred_path))
     auth_method = f"service account: {cred_path}" if using_service_account else "gcloud ADC"
 
+    sources = "Pexels + Unsplash" if pexels_key else "Unsplash only"
     if not args.yes:
         print(f"[seed] About to write seed data to REAL Firestore project: {args.project}")
-        print(f"       Photos → REAL Storage bucket: {args.bucket} (source: Unsplash)")
+        print(f"       Photos → REAL Storage bucket: {args.bucket} (sources: {sources})")
         print(f"       Auth: {auth_method}")
-        print(f"       {len(spots_to_seed)} real spots; ~{len(spots_to_seed)} Unsplash "
-              "searches (demo keys allow 50/hour).")
+        print(f"       {len(spots_to_seed)} spots; ~{len(spots_to_seed)} photo searches "
+              "per source (Unsplash demo 50/hr, Pexels 200/hr).")
         confirm = input("Type 'yes' to continue: ").strip().lower()
         if confirm != "yes":
             sys.exit("[seed] Aborted.")
@@ -572,11 +660,41 @@ def main():
     for cfg in spots_to_seed:
         name = cfg["name"]
 
-        # Real coordinates + real city/admin/country via forward geocoding (cached).
-        geo = forward_geocode(cfg["geocode_query"], geocoding_key, geocode_cache)
-        if not geo:
-            print(f"[seed]   ! Could not geocode '{name}' — skipping.")
-            continue
+        # Coordinates: discovered spots already carry them (from Places); curated
+        # spots are forward-geocoded (cached) from their geocode_query.
+        if "lat" in cfg and "lng" in cfg:
+            geo = {
+                "lat": cfg["lat"],
+                "lng": cfg["lng"],
+                "city": cfg.get("city", ""),
+                "admin_area": cfg.get("admin_area", ""),
+                "country": cfg.get("country", "United States"),
+            }
+        else:
+            geo = forward_geocode(cfg["geocode_query"], geocoding_key, geocode_cache)
+            if not geo:
+                print(f"[seed]   ! Could not geocode '{name}' — skipping.")
+                continue
+
+        # Resolve review text: curated spots bring their own notes; discovered spots
+        # draw from the category templates with {name}/{city} woven in. `eff` carries
+        # the tendency fields (best_times, access_level, ...) make_review reads.
+        if "notes" in cfg:
+            eff, notes, gear, comp = cfg, cfg["notes"], cfg["gear"], cfg["composition"]
+        else:
+            tpl = TEMPLATES.get(cfg.get("category"), TEMPLATES[DEFAULT_CATEGORY])
+            eff = {**tpl, **cfg}
+            city = geo["city"] or "California"
+            notes = [s.format(name=name, city=city) for s in tpl["notes"]]
+            gear = [s.format(name=name, city=city) for s in tpl["gear"]]
+            comp = [s.format(name=name, city=city) for s in tpl["composition"]]
+            # A real Google editorial summary (when --details was used) seeds one
+            # genuinely accurate, spot-specific note.
+            if cfg.get("description"):
+                # Google editorial text can contain en/em dashes; strip them to
+                # match the dash-free voice of the rest of the notes.
+                desc = cfg["description"].replace("—", ", ").replace("–", ", ")
+                notes = [desc] + notes
 
         # Decide the review set up front so we know exactly how many UNIQUE photos
         # to fetch — no image is ever shared between two reviews of this spot.
@@ -591,7 +709,7 @@ def main():
         # Fetch enough DISTINCT real photos for every review (override the search
         # with photo_query when the spot name alone returns too few).
         query = cfg.get("photo_query") or _spot_query(name, geo["city"])
-        images = fetch_unique_images(query, unsplash_key, sum(desired))
+        images = fetch_unique_images(query, sum(desired), unsplash_key, pexels_key)
         if not images:
             print(f"[seed]   ! No photos for '{query}' — skipping spot '{name}'.")
             continue
@@ -630,10 +748,10 @@ def main():
             f"→ {effective} reviews, {sum(counts)} unique photos"
         )
 
-        # Per-spot non-repeating draws for the hand-authored text fields.
-        note_bag = _Bag(cfg["notes"])
-        gear_bag = _Bag(cfg["gear"])
-        comp_bag = _Bag(cfg["composition"])
+        # Per-spot non-repeating draws for the resolved text fields.
+        note_bag = _Bag(notes)
+        gear_bag = _Bag(gear)
+        comp_bag = _Bag(comp)
 
         review_offsets = sorted(
             random.uniform(0.5, (now - spot_created).total_seconds() / 86400.0)
@@ -649,7 +767,7 @@ def main():
             photo_urls = upload_review_photos(bucket, args.bucket, review_id, chosen)
             _, review = make_review(
                 review_id, spot_id, spot_doc, author["uid"], created_at, photo_urls,
-                cfg, note_bag.draw(), gear_bag.draw(), comp_bag.draw(),
+                eff, note_bag.draw(), gear_bag.draw(), comp_bag.draw(),
             )
             reviews.append((review_id, review))
             review_counts[author["uid"]] += 1
