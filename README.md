@@ -219,7 +219,8 @@ make deploy-hosting   # firebase deploy --only hosting (legal pages)
 | **GET**    | `/spots`                          | ✓    | Find nearby spots within radius (lat/lng/radius_km)                                                                                                                                                |
 | **GET**    | `/spots/search`                   | ✓    | Search spots by name (global, not geo-scoped)                                                                                                                                                      |
 | **GET**    | `/spots/{id}`                     | ✓    | Retrieve a single spot's details and computed aggregates                                                                                                                                           |
-| **GET**    | `/spots/{id}/reviews`             | ✓    | Fetch paginated review feed for a spot                                                                                                                                                             |
+| **GET**    | `/spots/{id}/reviews`             | ✓    | Fetch paginated review feed for a spot. `sort`: `newest` (default) \| `highest_rated` \| `lowest_rated` \| `scout` (see [Review Sorting](#review-sorting))                                          |
+| **GET**    | `/spots/{id}/reviews/search`      | ✓    | Search a spot's reviews by review text (`notes` / `gear_recommendations` / `composition_hints`), paginated (`q`, `limit`, `cursor`, `sort` — same modes as the feed)                               |
 | **POST**   | `/spots/{id}/reviews`             | ✓    | Submit a new review for an existing spot (multipart JPEG, 1–5 photos)                                                                                                                              |
 | **POST**   | `/spots/with-review`              | ✓    | Submit a brand new spot and its first review atomically (409 if a spot already exists within 50 m)                                                                                                 |
 | **GET**    | `/reviews/{id}`                   | ✓    | Retrieve detailed info for a single review                                                                                                                                                         |
@@ -294,6 +295,31 @@ enforced by the path; there's no cross-user access and no owner check.
 /users/me/spots/{spot_id}/lists` returns the same shape so the store re-hydrates
   atomically after each edit. Page a list's full spots via
   `GET /users/me/lists/{id}/spots` (newest first; deleted spots silently skipped).
+
+## Review Sorting
+
+Both spot-scoped review lists — the feed (`GET /spots/{id}/reviews`) and search
+(`GET /spots/{id}/reviews/search`) — accept a `sort` query param:
+
+| `sort`          | Order                                                                          |
+| :-------------- | :----------------------------------------------------------------------------- |
+| `newest`        | **Default.** Most recent first (`created_at` desc).                            |
+| `highest_rated` | Highest `overall_rating` first, ties broken newest-first.                      |
+| `lowest_rated`  | Lowest `overall_rating` first, ties broken newest-first.                       |
+| `scout`         | **Scout Sort** — a quality blend (below) surfacing the best reviews first.     |
+
+**Scout Sort** ranks each review by a 0–1 quality score:
+
+```
+score = 0.5·(overall_rating / 5)
+      + 0.3·recency_decay        # exp half-life of 30 days on review age
+      + 0.2·richness             # fraction of: >1 photo, has notes, gear, composition
+```
+
+So a high-rated, recent, detailed review floats above a low-rated, old, or sparse one.
+Sorting and pagination run **in memory over a single spot's reviews** (bounded per spot); the
+scale path is a denormalized `scout_score` field with index-backed sorts. Pagination is unchanged
+— an opaque `cursor` (an unknown cursor → 400 `INVALID_CURSOR`).
 
 ## Review Submission Contract
 
