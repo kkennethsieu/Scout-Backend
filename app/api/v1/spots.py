@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, Query
 
 from app.api.v1.deps import current_uid, rate_limit, verify_app_check
+from app.schemas.enums import ReviewSort
 from app.schemas.pagination import PaginatedReviews, PaginatedSpots
 from app.schemas.review import (
     ReviewCreate,
@@ -60,10 +61,27 @@ async def get_spot_reviews(
     spot_id: str,
     limit: int = Query(20, ge=1, le=50),
     cursor: str | None = Query(None),
+    sort: ReviewSort = Query("newest"),
     uid: str = Depends(current_uid),
 ):
-    """Paginated reviews for a spot, newest first."""
-    return await review_service.get_reviews_for_spot(spot_id, limit, cursor)
+    """Paginated reviews for a spot. `sort`: newest | highest_rated | lowest_rated | scout."""
+    return await review_service.get_reviews_for_spot(spot_id, limit, cursor, sort)
+
+
+@router.get("/spots/{spot_id}/reviews/search", response_model=PaginatedReviews)
+async def search_spot_reviews(
+    spot_id: str,
+    q: str = Query(..., min_length=2, max_length=50),
+    limit: int = Query(20, ge=1, le=50),
+    cursor: str | None = Query(None),
+    sort: ReviewSort = Query("newest"),
+    uid: str = Depends(current_uid),
+):
+    """Search a spot's reviews by review text (notes / gear / composition).
+
+    `sort`: newest | highest_rated | lowest_rated | scout (default newest).
+    """
+    return await review_service.search_reviews_for_spot(spot_id, q, limit, cursor, sort)
 
 
 @router.post(

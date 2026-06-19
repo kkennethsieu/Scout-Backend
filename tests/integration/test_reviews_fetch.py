@@ -210,3 +210,107 @@ class TestReviewsFetch:
         assert body2["items"][0]["id"] == "user-rev-1"
         assert body2["items"][1]["id"] == "user-rev-0"
         assert body2["next_cursor"] is None
+
+
+class TestReviewsSort:
+    """GET /spots/{id}/reviews?sort=..."""
+
+    def test_highest_rated(self, client, auth_with_uid):
+        spot_id = _seed_spot()
+        uid = auth_with_uid["uid"]
+        _seed_review_direct(spot_id, "rate3", uid, rating=3)
+        _seed_review_direct(spot_id, "rate5", uid, rating=5)
+        _seed_review_direct(spot_id, "rate4", uid, rating=4)
+
+        r = client.get(
+            f"/spots/{spot_id}/reviews",
+            params={"sort": "highest_rated"},
+            headers=auth_with_uid["headers"],
+        )
+        assert r.status_code == 200
+        assert [i["id"] for i in r.json()["items"]] == ["rate5", "rate4", "rate3"]
+
+    def test_lowest_rated(self, client, auth_with_uid):
+        spot_id = _seed_spot()
+        uid = auth_with_uid["uid"]
+        _seed_review_direct(spot_id, "rate3", uid, rating=3)
+        _seed_review_direct(spot_id, "rate5", uid, rating=5)
+        _seed_review_direct(spot_id, "rate4", uid, rating=4)
+
+        r = client.get(
+            f"/spots/{spot_id}/reviews",
+            params={"sort": "lowest_rated"},
+            headers=auth_with_uid["headers"],
+        )
+        assert r.status_code == 200
+        assert [i["id"] for i in r.json()["items"]] == ["rate3", "rate4", "rate5"]
+
+    def test_rating_ties_break_newest(self, client, auth_with_uid):
+        spot_id = _seed_spot()
+        uid = auth_with_uid["uid"]
+        _seed_review_direct(
+            spot_id, "old5", uid, rating=5, created_at=datetime(2024, 1, 1, tzinfo=timezone.utc)
+        )
+        _seed_review_direct(
+            spot_id, "new5", uid, rating=5, created_at=datetime(2024, 1, 5, tzinfo=timezone.utc)
+        )
+        _seed_review_direct(
+            spot_id, "mid", uid, rating=3, created_at=datetime(2024, 1, 3, tzinfo=timezone.utc)
+        )
+
+        r = client.get(
+            f"/spots/{spot_id}/reviews",
+            params={"sort": "highest_rated"},
+            headers=auth_with_uid["headers"],
+        )
+        assert r.status_code == 200
+        assert [i["id"] for i in r.json()["items"]] == ["new5", "old5", "mid"]
+
+    def test_scout_puts_quality_first(self, client, auth_with_uid):
+        spot_id = _seed_spot()
+        uid = auth_with_uid["uid"]
+        _seed_review_direct(spot_id, "meh", uid, rating=2)
+        _seed_review_direct(spot_id, "best", uid, rating=5)
+
+        r = client.get(
+            f"/spots/{spot_id}/reviews",
+            params={"sort": "scout"},
+            headers=auth_with_uid["headers"],
+        )
+        assert r.status_code == 200
+        assert r.json()["items"][0]["id"] == "best"
+
+    def test_sort_pagination(self, client, auth_with_uid):
+        spot_id = _seed_spot()
+        uid = auth_with_uid["uid"]
+        headers = auth_with_uid["headers"]
+        for rid, rating in (("p5", 5), ("p4", 4), ("p3", 3), ("p2", 2)):
+            _seed_review_direct(spot_id, rid, uid, rating=rating)
+
+        r = client.get(
+            f"/spots/{spot_id}/reviews",
+            params={"sort": "highest_rated", "limit": 2},
+            headers=headers,
+        )
+        body = r.json()
+        assert [i["id"] for i in body["items"]] == ["p5", "p4"]
+        assert body["next_cursor"] is not None
+
+        r2 = client.get(
+            f"/spots/{spot_id}/reviews",
+            params={"sort": "highest_rated", "limit": 2, "cursor": body["next_cursor"]},
+            headers=headers,
+        )
+        body2 = r2.json()
+        assert [i["id"] for i in body2["items"]] == ["p3", "p2"]
+        assert body2["next_cursor"] is None
+
+    def test_invalid_sort(self, client, auth_headers):
+        spot_id = _seed_spot()
+        r = client.get(
+            f"/spots/{spot_id}/reviews",
+            params={"sort": "bogus"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+        assert r.json()["code"] == "INVALID_ENUM_VALUE"
