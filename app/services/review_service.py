@@ -1,6 +1,7 @@
 """Review service — CRUD + submission with aggregates and storage."""
 
 import logging
+import math
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -69,42 +70,137 @@ async def get_review(review_id: str) -> dict:
     return _attach_authors([data])[0]
 
 
-async def get_reviews_for_spot(spot_id: str, limit: int = 20, cursor: str | None = None) -> dict:
-    """
-    Paginated reviews for a spot, newest first.
-    Uses composite index (spot_id ASC, created_at DESC).
-    """
-    limit = min(limit, 50)  # hard cap
+# Free-text fields searched by search_reviews_for_spot.
+_REVIEW_TEXT_FIELDS = ("notes", "gear_recommendations", "composition_hints")
 
-    query = (
+# --- Scout Sort (quality blend) tuning ---
+_SCOUT_RATING_W = 0.5
+_SCOUT_RECENCY_W = 0.3
+_SCOUT_RICHNESS_W = 0.2
+_RECENCY_HALF_LIFE_DAYS = 30.0  # a review's recency weight halves every 30 days
+
+
+def _review_matches(review: dict, q: str) -> bool:
+    """True if the lowercased query is a substring of any of the review's text fields."""
+    return any(q in (review.get(f) or "").lower() for f in _REVIEW_TEXT_FIELDS)
+
+
+def _load_spot_reviews(spot_id: str) -> list[dict]:
+    """Load a spot's full review set (newest-first) as dicts with `id` set.
+
+    One index-backed query (reuses the (spot_id ASC, created_at DESC) composite
+    index). This is the in-memory scan that backs the feed + search: bounded per
+    spot, so fine at current scale. The scale path is a denormalized scout_score
+    field + index-backed sorts — mirrors the note in spot_service.search_by_name.
+    """
+    docs = (
         db.collection("reviews")
         .where("spot_id", "==", spot_id)
         .order_by("created_at", direction="DESCENDING")
+        .stream()
     )
-
-    if cursor:
-        try:
-            cursor_doc = db.collection("reviews").document(cursor).get()
-            if not cursor_doc.exists:
-                raise InvalidCursor()
-            query = query.start_after(cursor_doc)
-        except InvalidCursor:
-            raise
-        except Exception:
-            raise InvalidCursor()
-
-    # Fetch limit + 1 to determine if there's a next page
-    docs = list(query.limit(limit + 1).stream())
-
-    items = []
-    for doc in docs[:limit]:
+    out = []
+    for doc in docs:
         d = doc.to_dict()
         d["id"] = doc.id
-        items.append(d)
+        out.append(d)
+    return out
 
-    next_cursor = docs[limit - 1].id if len(docs) > limit else None
 
-    return {"items": _attach_authors(items), "limit": limit, "next_cursor": next_cursor}
+def _created_ts(review: dict) -> float:
+    """POSIX timestamp of created_at (0.0 if missing) for use in sort keys."""
+    created = review.get("created_at")
+    return created.timestamp() if created else 0.0
+
+
+def _scout_score(review: dict, now: datetime) -> float:
+    """Quality blend in [0, 1]: rating + recency decay + content richness.
+
+    Surfaces high-rated, recent, detailed reviews. See README "Review Sorting".
+    """
+    rating = (review.get("overall_rating") or 0) / 5.0
+
+    created = review.get("created_at")
+    age_days = max((now - created).total_seconds() / 86400.0, 0.0) if created else 0.0
+    recency = math.exp(-math.log(2) * age_days / _RECENCY_HALF_LIFE_DAYS)
+
+    richness = (
+        (len(review.get("photo_urls") or []) > 1)
+        + bool((review.get("notes") or "").strip())
+        + bool((review.get("gear_recommendations") or "").strip())
+        + bool((review.get("composition_hints") or "").strip())
+    ) / 4.0
+
+    return _SCOUT_RATING_W * rating + _SCOUT_RECENCY_W * recency + _SCOUT_RICHNESS_W * richness
+
+
+def _sort_reviews(reviews: list[dict], sort: str) -> None:
+    """Sort reviews in place by the requested mode.
+
+    Keys always end with `id` as a final tiebreak so ordering is deterministic
+    across requests — the position-based cursor depends on it.
+    """
+    if sort == "highest_rated":
+        reviews.sort(key=lambda r: (-(r.get("overall_rating") or 0), -_created_ts(r), r["id"]))
+    elif sort == "lowest_rated":
+        reviews.sort(key=lambda r: ((r.get("overall_rating") or 0), -_created_ts(r), r["id"]))
+    elif sort == "scout":
+        now = datetime.now(timezone.utc)
+        reviews.sort(key=lambda r: (-_scout_score(r, now), -_created_ts(r), r["id"]))
+    else:  # "newest"
+        reviews.sort(key=lambda r: (-_created_ts(r), r["id"]))
+
+
+def _paginate_in_memory(items: list[dict], limit: int, cursor: str | None) -> dict:
+    """Page an already-sorted list with a position-based (doc-id) cursor.
+
+    The cursor is the id of the last item on the previous page; an unknown cursor
+    → InvalidCursor. Returns the PaginatedReviews shape with authors attached.
+    """
+    start = 0
+    if cursor:
+        start = next((i + 1 for i, m in enumerate(items) if m["id"] == cursor), None)
+        if start is None:
+            raise InvalidCursor()
+
+    page = items[start : start + limit]
+    next_cursor = page[-1]["id"] if len(items) > start + limit else None
+    return {"items": _attach_authors(page), "limit": limit, "next_cursor": next_cursor}
+
+
+async def get_reviews_for_spot(
+    spot_id: str, limit: int = 20, cursor: str | None = None, sort: str = "newest"
+) -> dict:
+    """
+    Paginated reviews for a spot, sorted by `sort` (default newest-first).
+
+    Scans the spot's full review set and sorts + paginates in memory — see
+    _load_spot_reviews for the scan/scale notes and _sort_reviews for the modes.
+    """
+    limit = min(limit, 50)  # hard cap
+    reviews = _load_spot_reviews(spot_id)
+    _sort_reviews(reviews, sort)
+    return _paginate_in_memory(reviews, limit, cursor)
+
+
+async def search_reviews_for_spot(
+    spot_id: str, q: str, limit: int = 20, cursor: str | None = None, sort: str = "newest"
+) -> dict:
+    """
+    Search a single spot's reviews by review text, sorted by `sort`, paginated.
+
+    Matches a case-insensitive substring of the query against the reviewer's
+    free-text fields (notes / gear_recommendations / composition_hints), then
+    sorts + paginates the matches in memory (same scan as get_reviews_for_spot).
+    """
+    limit = min(limit, 50)  # hard cap
+    q = q.strip().lower()
+    if not q:
+        return {"items": [], "limit": limit, "next_cursor": None}
+
+    matches = [r for r in _load_spot_reviews(spot_id) if _review_matches(r, q)]
+    _sort_reviews(matches, sort)
+    return _paginate_in_memory(matches, limit, cursor)
 
 
 async def get_reviews_for_user(user_id: str, limit: int = 10, cursor: str | None = None) -> dict:

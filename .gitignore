@@ -68,3 +68,5 @@ Thumbs.db
 
 # Seeder geocode cache (local)
 scripts/.geocode_cache.json
+scripts/.reverse_geocode_cache.json
+scripts/discovered_spots*.json
