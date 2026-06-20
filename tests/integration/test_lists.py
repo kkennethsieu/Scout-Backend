@@ -28,6 +28,26 @@ def _seed_spot(spot_id, name, lat=34.05, lng=-118.24, photo_url=None):
     db.collection("spots").document(spot_id).set(data)
 
 
+def _seed_review(spot_id, review_id, user_id, rating=4):
+    """Seed a review owned by `user_id` so DELETE /reviews/{id} can be driven."""
+    from app.core.firebase import db
+
+    db.collection("reviews").document(review_id).set(
+        {
+            "spot_id": spot_id,
+            "spot_name": "Spot",
+            "public_lat": 34.05,
+            "public_lng": -118.24,
+            "city": "Los Angeles",
+            "admin_area": "California",
+            "user_id": user_id,
+            "photo_urls": ["https://example.com/photo.jpg"],
+            "overall_rating": rating,
+            "created_at": datetime.now(timezone.utc),
+        }
+    )
+
+
 class TestListOverview:
     def test_favorites_auto_created_and_first(self, client, auth_headers):
         r = client.get("/users/me/lists", headers=auth_headers)
@@ -294,6 +314,91 @@ class TestSetMembership:
         )
         assert r.status_code == 404
         assert r.json()["code"] == "LIST_NOT_FOUND"
+
+
+class TestSpotDeletionCleanup:
+    """Deleting a spot's last review scrubs it from saved lists (no dangling refs)."""
+
+    def test_deleting_last_review_removes_spot_from_lists(self, client, auth_with_uid):
+        headers, uid = auth_with_uid["headers"], auth_with_uid["uid"]
+        _seed_spot("s1", "Spot 1")
+        _seed_review("s1", "rev1", uid)
+        client.patch("/users/me/spots/s1/lists", json={"list_ids": ["favorites"]}, headers=headers)
+
+        # Sanity: list shows the spot before deletion.
+        assert client.get("/users/me/lists", headers=headers).json()["lists"][0]["spot_count"] == 1
+
+        # Delete the spot's only review → the spot is deleted → lists are scrubbed.
+        assert client.delete("/reviews/rev1", headers=headers).status_code == 204
+
+        fav = client.get("/users/me/lists", headers=headers).json()["lists"][0]
+        assert fav["spot_count"] == 0  # count is truthful, no dangling ref
+        spots = client.get("/users/me/lists/favorites/spots", headers=headers).json()
+        assert spots["items"] == []
+
+    def test_cleanup_spans_users(self, client, auth_headers_for):
+        a = auth_headers_for(email="a@example.com")
+        b = auth_headers_for(email="b@example.com")
+        _seed_spot("s1", "Spot 1")
+        _seed_review("s1", "rev1", a["uid"])  # owned by A
+        client.patch(
+            "/users/me/spots/s1/lists", json={"list_ids": ["favorites"]}, headers=a["headers"]
+        )
+        client.patch(
+            "/users/me/spots/s1/lists", json={"list_ids": ["favorites"]}, headers=b["headers"]
+        )
+
+        assert client.delete("/reviews/rev1", headers=a["headers"]).status_code == 204
+
+        # Both users' lists are scrubbed, not just the deleter's.
+        assert (
+            client.get("/users/me/lists", headers=a["headers"]).json()["lists"][0]["spot_count"]
+            == 0
+        )
+        assert (
+            client.get("/users/me/lists", headers=b["headers"]).json()["lists"][0]["spot_count"]
+            == 0
+        )
+
+    def test_non_last_review_leaves_spot_and_membership(
+        self, client, auth_with_uid, auth_headers_for
+    ):
+        headers, uid = auth_with_uid["headers"], auth_with_uid["uid"]
+        other = auth_headers_for(email="other@example.com")
+        _seed_spot("s1", "Spot 1")
+        _seed_review("s1", "rev1", uid)  # caller's review
+        _seed_review("s1", "rev2", other["uid"])  # a second review keeps the spot alive
+        client.patch("/users/me/spots/s1/lists", json={"list_ids": ["favorites"]}, headers=headers)
+
+        # Deleting one of two reviews leaves the spot — membership is untouched.
+        assert client.delete("/reviews/rev1", headers=headers).status_code == 204
+
+        fav = client.get("/users/me/lists", headers=headers).json()["lists"][0]
+        assert fav["spot_count"] == 1
+        spots = client.get("/users/me/lists/favorites/spots", headers=headers).json()
+        assert [s["id"] for s in spots["items"]] == ["s1"]
+
+    def test_read_self_heals_preexisting_dangling_ref(self, client, auth_headers):
+        """A spot deleted before the proactive fix is pruned on the next list read."""
+        _seed_spot("s1", "Spot 1")
+        _seed_spot("s2", "Spot 2")
+        for sid in ("s1", "s2"):
+            client.patch(
+                f"/users/me/spots/{sid}/lists",
+                json={"list_ids": ["favorites"]},
+                headers=auth_headers,
+            )
+        # Simulate pre-fix corruption: delete the spot doc directly, leaving a dead ref.
+        from app.core.firebase import db
+
+        db.collection("spots").document("s1").delete()
+
+        # Reading the list spots prunes the dead ref (self-heal).
+        client.get("/users/me/lists/favorites/spots", headers=auth_headers)
+
+        # The next overview now reports the corrected count.
+        fav = client.get("/users/me/lists", headers=auth_headers).json()["lists"][0]
+        assert fav["spot_count"] == 1
 
 
 class TestListAuth:

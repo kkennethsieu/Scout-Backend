@@ -36,6 +36,7 @@ log = logging.getLogger(__name__)
 FAVORITES_ID = "favorites"
 FAVORITES_NAME = "Favorites"
 LIST_LIMIT = 100  # max lists per user — bounds the set-membership transaction
+_BATCH_LIMIT = 450  # Firestore caps a batched write at 500 ops; stay under it.
 
 
 def _lists_col(uid: str):
@@ -218,6 +219,15 @@ async def get_list_spots(uid: str, list_id: str, limit: int, cursor: str | None 
     spots_by_id = spot_service.get_spots_by_ids(page_ids)
     items = [spots_by_id[sid] for sid in page_ids if sid in spots_by_id]
 
+    # Self-heal: prune any dead refs on this page (spots deleted before the
+    # proactive cleanup landed, or any that slipped through it). ArrayRemove is
+    # atomic, so spot_count — derived as len(spot_ids) — converges to the truth.
+    missing = [sid for sid in page_ids if sid not in spots_by_id]
+    if missing:
+        _lists_col(uid).document(list_id).update(
+            {"spot_ids": firestore.ArrayRemove(missing), "updated_at": _now()}
+        )
+
     next_start = start + limit
     next_cursor = _encode_cursor(next_start) if next_start < len(ordered_ids) else None
 
@@ -265,6 +275,31 @@ async def set_membership(uid: str, spot_id: str, list_ids: list[str]) -> dict:
 
     _run_txn(_txn, transaction)
     return await list_overview(uid)
+
+
+def remove_spot_from_all_lists(spot_id: str) -> None:
+    """Scrub a deleted spot's id from every user's list (collection-group sweep).
+
+    Called after a spot is deleted (its last review removed) so no list keeps a
+    dangling reference — spot_count stays truthful (it's derived as len(spot_ids)).
+    ArrayRemove is atomic, so this is safe against concurrent membership edits.
+    Batched under Firestore's 500-op limit.
+    """
+    now = _now()
+    batch = db.batch()
+    pending = 0
+    query = db.collection_group("lists").where("spot_ids", "array_contains", spot_id)
+    for doc in query.stream():
+        batch.update(
+            doc.reference, {"spot_ids": firestore.ArrayRemove([spot_id]), "updated_at": now}
+        )
+        pending += 1
+        if pending == _BATCH_LIMIT:
+            batch.commit()
+            batch = db.batch()
+            pending = 0
+    if pending:
+        batch.commit()
 
 
 def _run_txn(fn, transaction) -> None:
