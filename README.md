@@ -295,6 +295,12 @@ enforced by the path; there's no cross-user access and no owner check.
 /users/me/spots/{spot_id}/lists` returns the same shape so the store re-hydrates
   atomically after each edit. Page a list's full spots via
   `GET /users/me/lists/{id}/spots` (newest first; deleted spots silently skipped).
+- **No dangling refs.** A spot is deleted when its last review is removed
+  (`DELETE /reviews/{id}`). When that happens, the spot's id is scrubbed from
+  **every** user's list (a collection-group sweep), so `spot_count` stays truthful
+  rather than counting a spot that no longer renders. As a safety net, reading a
+  list also self-heals — any id that no longer resolves is pruned on read — so lists
+  corrupted before this behavior existed converge to the correct count.
 
 ## Review Sorting
 
