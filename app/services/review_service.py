@@ -25,7 +25,7 @@ from app.schemas.review import (
     ReviewCreate,
     SpotWithReviewCreate,
 )
-from app.services import spot_cache
+from app.services import list_service, spot_cache
 from app.services.aggregates import empty_aggregates, update_or_init_aggregates
 from app.services.geo import bounding_box, haversine_km
 from app.services.storage_service import (
@@ -541,7 +541,7 @@ async def delete_review(review_id: str, uid: str) -> None:
                 # Last review removed → the spot has no content; remove it.
                 if spot_snap.exists:
                     txn.delete(spot_ref)
-                return
+                return True  # spot deleted → saved lists need cleanup
 
             spot_data = spot_snap.to_dict() or {}
             rebuilt = {
@@ -551,8 +551,9 @@ async def delete_review(review_id: str, uid: str) -> None:
             for rid, rdoc in remaining:
                 rebuilt = update_or_init_aggregates(rebuilt, rdoc, rid)
             txn.set(spot_ref, rebuilt)
+            return False
 
-        _delete_in_txn(transaction)
+        spot_deleted = _delete_in_txn(transaction)
     except GoogleAPICallError as e:
         log.error("Delete transaction failed: %s", str(e))
         raise UpstreamUnavailable()
@@ -562,6 +563,16 @@ async def delete_review(review_id: str, uid: str) -> None:
 
     # Spot aggregates changed (or the spot was removed) — drop the cached snapshot.
     spot_cache.invalidate()
+
+    # If the spot itself was deleted (last review removed), scrub its id from every
+    # saved list so spot_count stays truthful. Best-effort, post-commit (like the
+    # photo cleanup below) — a failure here must not fail the committed delete; the
+    # lazy prune in get_list_spots is the safety net.
+    if spot_deleted:
+        try:
+            list_service.remove_spot_from_all_lists(spot_id)
+        except Exception as e:
+            log.error("Saved-list cleanup after spot delete failed: %s", str(e))
 
     # Photos can't be removed inside a Firestore txn — clean them up post-commit.
     await delete_review_blobs(review_id)
