@@ -487,10 +487,24 @@ _SPOT_IDENTITY_FIELDS = (
     "created_at",
 )
 
+# AI-summary fields live outside the incremental aggregate machinery, so they'd
+# be lost when delete_review rebuilds aggregates from scratch. Carry them over so
+# a delete doesn't wipe the summary; the post-commit refresh (debounced) decides
+# whether it's stale enough to regenerate.
+_SPOT_AI_SUMMARY_FIELDS = (
+    "ai_summary",
+    "ai_summary_review_count",
+    "ai_summary_generated_at",
+    "ai_summary_model",
+)
 
-async def delete_review(review_id: str, uid: str) -> None:
+
+async def delete_review(review_id: str, uid: str) -> str | None:
     """
     Delete a review (author only) and reverse its effect on the spot.
+
+    Returns the affected spot_id (so the caller can refresh its AI summary), or
+    None if the spot was deleted along with its last review.
 
     Flow:
     1. Load the review → 404 if missing, 403 if not the author.
@@ -547,6 +561,9 @@ async def delete_review(review_id: str, uid: str) -> None:
             rebuilt = {
                 **{k: spot_data.get(k) for k in _SPOT_IDENTITY_FIELDS},
                 **empty_aggregates(),
+                # Preserve the AI summary across the rebuild — it isn't an
+                # incremental aggregate, so empty_aggregates() doesn't hold it.
+                **{k: spot_data[k] for k in _SPOT_AI_SUMMARY_FIELDS if k in spot_data},
             }
             for rid, rdoc in remaining:
                 rebuilt = update_or_init_aggregates(rebuilt, rdoc, rid)
@@ -576,3 +593,6 @@ async def delete_review(review_id: str, uid: str) -> None:
 
     # Photos can't be removed inside a Firestore txn — clean them up post-commit.
     await delete_review_blobs(review_id)
+
+    # Surviving spot → caller refreshes its summary; None if the spot is gone.
+    return None if spot_deleted else spot_id

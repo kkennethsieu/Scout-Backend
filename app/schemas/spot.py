@@ -34,6 +34,10 @@ class SpotResponse(BaseModel):
     mode_tripod_allowed: Optional[bool] = None
     recent_gear_recommendations: list[str] = []
     recent_composition_hints: list[str] = []
+    # AI-generated "what photographers say" blurb, synthesized from the spot's
+    # reviews (see summary_service). None until the spot has enough reviews and a
+    # summary has been generated.
+    ai_summary: Optional[str] = None
 
 
 class SpotSummaryResponse(BaseModel):
