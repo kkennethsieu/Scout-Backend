@@ -1,10 +1,10 @@
 """Review endpoints — single review fetch + delete."""
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Response
 
 from app.api.v1.deps import current_uid, rate_limit, verify_app_check
 from app.schemas.review import ReviewResponse
-from app.services import review_service
+from app.services import review_service, summary_service
 
 router = APIRouter(tags=["reviews"], dependencies=[Depends(verify_app_check)])
 
@@ -25,6 +25,7 @@ async def get_review(
 )
 async def delete_review(
     review_id: str,
+    background_tasks: BackgroundTasks,
     uid: str = Depends(current_uid),
 ):
     """Delete one of the caller's own reviews.
@@ -32,5 +33,8 @@ async def delete_review(
     Reverses the review's effect on the spot's aggregates and the author's
     review_count. 404 if missing, 403 if it isn't the caller's review.
     """
-    await review_service.delete_review(review_id, uid)
+    spot_id = await review_service.delete_review(review_id, uid)
+    # If the spot survived (still has reviews), refresh its AI summary off the
+    # request path. None means the spot was deleted with its last review.
+    background_tasks.add_task(summary_service.maybe_regenerate_summary, spot_id)
     return Response(status_code=204)
