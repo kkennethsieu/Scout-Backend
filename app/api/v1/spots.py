@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Query
 
 from app.api.v1.deps import current_uid, rate_limit, verify_app_check
 from app.schemas.enums import ReviewSort
@@ -14,7 +14,7 @@ from app.schemas.review import (
     SubmitReviewWithNewSpotResponse,
 )
 from app.schemas.spot import SpotResponse, SpotSummaryResponse
-from app.services import geocoding, review_service, spot_service
+from app.services import geocoding, review_service, spot_service, summary_service
 
 router = APIRouter(tags=["spots"], dependencies=[Depends(verify_app_check)])
 
@@ -93,6 +93,7 @@ async def search_spot_reviews(
 async def submit_review(
     spot_id: str,
     data: Annotated[ReviewCreate, Form()],
+    background_tasks: BackgroundTasks,
     uid: str = Depends(current_uid),
 ):
     """
@@ -102,7 +103,11 @@ async def submit_review(
     All content fields except overall_rating are optional; enums are validated by
     the ReviewCreate model (exact capitalized strings, e.g. "Easy" not "easy").
     """
-    return await review_service.submit_review(spot_id=spot_id, data=data, uid=uid)
+    review = await review_service.submit_review(spot_id=spot_id, data=data, uid=uid)
+    # The spot gained a review — refresh its AI summary off the request path
+    # (debounced inside the service, so most submits are a cheap no-op).
+    background_tasks.add_task(summary_service.maybe_regenerate_summary, spot_id)
+    return review
 
 
 @router.post(

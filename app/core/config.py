@@ -31,6 +31,21 @@ class Settings(BaseSettings):
     # ships the App Check SDK). Flip to True via env once the client sends tokens.
     APP_CHECK_ENFORCED: bool = False
 
+    # --- AI review summaries (Google Gemini) ---
+    # GEMINI_API_KEY lives in Secret Manager on Cloud Run (mounted as env var),
+    # locally in .env. Empty default so the app still boots without it; generation
+    # is a no-op until AI_SUMMARIES_ENABLED is on AND a key is present.
+    GEMINI_API_KEY: str = ""
+    # Cheap flash-tier default; env-overridable so the exact model id can be
+    # swapped without a code change.
+    GEMINI_MODEL: str = "gemini-2.0-flash-lite"
+    # Master switch for runtime summary generation. Kill-switch via env.
+    AI_SUMMARIES_ENABLED: bool = True
+    # Don't summarize a spot until it has at least this many reviews.
+    AI_SUMMARY_MIN_REVIEWS: int = 3
+    # Regenerate once review_count has grown by this much since the last summary.
+    AI_SUMMARY_REFRESH_EVERY: int = 5
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
