@@ -28,7 +28,12 @@ async def list_nearby_spots(
     cursor: str | None = Query(None),
     uid: str = Depends(current_uid),
 ):
-    """List spots within radius_km of (lat, lng), sorted by distance, paginated."""
+    """List spots within radius_km of (lat, lng), sorted by distance, paginated.
+
+    If the first page finds nothing nearby, the response falls back to spots around
+    a predefined flagship location with `is_fallback=true` (a single page), so the
+    client can render something and label it instead of showing a blank map.
+    """
     radius_km = min(radius_km, 500)
     return await spot_service.find_nearby(lat, lng, radius_km, limit, cursor)
 

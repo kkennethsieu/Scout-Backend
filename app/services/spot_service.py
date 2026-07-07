@@ -5,6 +5,7 @@ import binascii
 
 from google.cloud.firestore_v1.field_path import FieldPath
 
+from app.core.config import settings
 from app.core.exceptions import InvalidCursor, SpotNotFound
 from app.core.firebase import db
 from app.services import spot_cache
@@ -39,6 +40,34 @@ def _decode_cursor(cursor: str) -> tuple[float, str]:
 
 
 async def find_nearby(
+    lat: float,
+    lng: float,
+    radius_km: float,
+    limit: int,
+    cursor: str | None = None,
+) -> dict:
+    """Nearby spots with an empty-result fallback to a predefined flagship location.
+
+    Runs the real distance scan first. If it returns spots — or the caller is
+    paging (cursor present) — that's the answer, flagged is_fallback=False. Only
+    when the FIRST page is completely empty (and the fallback is enabled) do we
+    re-scan around settings.FALLBACK_LAT/LNG so the client always has something to
+    render. The fallback is a single page (next_cursor=None): its distances are
+    measured from the flagship center, so replaying that cursor against the
+    caller's real coordinates would be meaningless.
+    """
+    result = await _scan_nearby(lat, lng, radius_km, limit, cursor)
+
+    if result["items"] or cursor is not None or not settings.NEARBY_FALLBACK_ENABLED:
+        return {**result, "is_fallback": False}
+
+    fb = await _scan_nearby(
+        settings.FALLBACK_LAT, settings.FALLBACK_LNG, settings.FALLBACK_RADIUS_KM, limit, None
+    )
+    return {"items": fb["items"], "limit": limit, "next_cursor": None, "is_fallback": True}
+
+
+async def _scan_nearby(
     lat: float,
     lng: float,
     radius_km: float,
