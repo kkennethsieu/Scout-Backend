@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     # Regenerate once review_count has grown by this much since the last summary.
     AI_SUMMARY_REFRESH_EVERY: int = 5
 
+    # --- Nearby-spots fallback ---
+    # When GET /spots finds nothing near the caller (first page), fall back to the
+    # spots around a predefined flagship location so the map/feed is never blank.
+    # The result is flagged is_fallback=true so the client can label it. Kill-switch
+    # + location + radius are env-overridable (no app release to retune the flagship).
+    NEARBY_FALLBACK_ENABLED: bool = True
+    FALLBACK_LAT: float = 34.0522  # Los Angeles
+    FALLBACK_LNG: float = -118.2437
+    FALLBACK_RADIUS_KM: float = 100.0
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
