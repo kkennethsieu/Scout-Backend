@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Query
 
-from app.api.v1.deps import current_uid, rate_limit, verify_app_check
+from app.api.v1.deps import current_uid, rate_limit, rate_limit_ip, verify_app_check
 from app.schemas.enums import ReviewSort
 from app.schemas.pagination import PaginatedReviews, PaginatedSpots
 from app.schemas.review import (
@@ -19,16 +19,21 @@ from app.services import geocoding, review_service, spot_service, summary_servic
 router = APIRouter(tags=["spots"], dependencies=[Depends(verify_app_check)])
 
 
-@router.get("/spots", response_model=PaginatedSpots)
+@router.get(
+    "/spots",
+    response_model=PaginatedSpots,
+    dependencies=[Depends(rate_limit_ip("120/minute", scope="list_spots"))],
+)
 async def list_nearby_spots(
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     radius_km: float = Query(..., gt=0, le=1000),
     limit: int = Query(20, ge=1, le=50),
     cursor: str | None = Query(None),
-    uid: str = Depends(current_uid),
 ):
     """List spots within radius_km of (lat, lng), sorted by distance, paginated.
+
+    Public: no JWT required (App Check still applies at the router level).
 
     If the first page finds nothing nearby, the response falls back to spots around
     a predefined flagship location with `is_fallback=true` (a single page), so the
@@ -38,53 +43,75 @@ async def list_nearby_spots(
     return await spot_service.find_nearby(lat, lng, radius_km, limit, cursor)
 
 
-@router.get("/spots/search", response_model=list[SpotSummaryResponse])
+@router.get(
+    "/spots/search",
+    response_model=list[SpotSummaryResponse],
+    dependencies=[Depends(rate_limit_ip("30/minute", scope="search_spots"))],
+)
 async def search_spots(
     q: str = Query(..., min_length=2, max_length=50),
     limit: int = Query(5, ge=1, le=10),
-    uid: str = Depends(current_uid),
 ):
     """Search spots by name (case-insensitive substring), ranked by match quality.
 
     Global — not geo-scoped. Powers the "Spots" section of the search bar; the
     "Places" section is resolved client-side via MKLocalSearch.
+
+    Public: no JWT required (App Check still applies at the router level).
     """
     return await spot_service.search_by_name(q, limit)
 
 
-@router.get("/spots/{spot_id}", response_model=SpotResponse)
+@router.get(
+    "/spots/{spot_id}",
+    response_model=SpotResponse,
+    dependencies=[Depends(rate_limit_ip("120/minute", scope="get_spot"))],
+)
 async def get_spot(
     spot_id: str,
-    uid: str = Depends(current_uid),
 ):
-    """Get a single spot with full aggregates."""
+    """Get a single spot with full aggregates.
+
+    Public: no JWT required (App Check still applies at the router level).
+    """
     return await spot_service.get_spot(spot_id)
 
 
-@router.get("/spots/{spot_id}/reviews", response_model=PaginatedReviews)
+@router.get(
+    "/spots/{spot_id}/reviews",
+    response_model=PaginatedReviews,
+    dependencies=[Depends(rate_limit_ip("120/minute", scope="get_spot_reviews"))],
+)
 async def get_spot_reviews(
     spot_id: str,
     limit: int = Query(20, ge=1, le=50),
     cursor: str | None = Query(None),
     sort: ReviewSort = Query("newest"),
-    uid: str = Depends(current_uid),
 ):
-    """Paginated reviews for a spot. `sort`: newest | highest_rated | lowest_rated | scout."""
+    """Paginated reviews for a spot. `sort`: newest | highest_rated | lowest_rated | scout.
+
+    Public: no JWT required (App Check still applies at the router level).
+    """
     return await review_service.get_reviews_for_spot(spot_id, limit, cursor, sort)
 
 
-@router.get("/spots/{spot_id}/reviews/search", response_model=PaginatedReviews)
+@router.get(
+    "/spots/{spot_id}/reviews/search",
+    response_model=PaginatedReviews,
+    dependencies=[Depends(rate_limit_ip("30/minute", scope="search_spot_reviews"))],
+)
 async def search_spot_reviews(
     spot_id: str,
     q: str = Query(..., min_length=2, max_length=50),
     limit: int = Query(20, ge=1, le=50),
     cursor: str | None = Query(None),
     sort: ReviewSort = Query("newest"),
-    uid: str = Depends(current_uid),
 ):
     """Search a spot's reviews by review text (notes / gear / composition).
 
     `sort`: newest | highest_rated | lowest_rated | scout (default newest).
+
+    Public: no JWT required (App Check still applies at the router level).
     """
     return await review_service.search_reviews_for_spot(spot_id, q, limit, cursor, sort)
 

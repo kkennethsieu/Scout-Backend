@@ -175,11 +175,11 @@ class TestReviewsSearch:
         assert r.status_code == 400
         assert r.json()["code"] == "INVALID_CURSOR"
 
-    def test_requires_auth(self, client):
-        """Missing Authorization header → 401."""
+    def test_public_no_auth(self, client):
+        """Public: no token → 200 (JWT not required)."""
         spot_id = _seed_spot()
         r = client.get(f"/spots/{spot_id}/reviews/search", params={"q": "drone"})
-        assert r.status_code == 401
+        assert r.status_code == 200
 
     def test_sort_reorders_matches(self, client, auth_with_uid):
         """`sort` reorders the matched set (highest_rated over matching reviews)."""

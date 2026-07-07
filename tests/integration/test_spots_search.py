@@ -89,7 +89,7 @@ class TestSpotsSearch:
         r = client.get("/spots/search", params={"q": ""}, headers=auth_headers)
         assert r.status_code == 400
 
-    def test_requires_auth(self, client):
-        """No token → 401."""
+    def test_public_no_auth(self, client):
+        """Public: no token → 200 (JWT not required)."""
         r = client.get("/spots/search", params={"q": "fall"})
-        assert r.status_code == 401
+        assert r.status_code == 200
