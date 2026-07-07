@@ -2,19 +2,25 @@
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response
 
-from app.api.v1.deps import current_uid, rate_limit, verify_app_check
+from app.api.v1.deps import current_uid, rate_limit, rate_limit_ip, verify_app_check
 from app.schemas.review import ReviewResponse
 from app.services import review_service, summary_service
 
 router = APIRouter(tags=["reviews"], dependencies=[Depends(verify_app_check)])
 
 
-@router.get("/reviews/{review_id}", response_model=ReviewResponse)
+@router.get(
+    "/reviews/{review_id}",
+    response_model=ReviewResponse,
+    dependencies=[Depends(rate_limit_ip("120/minute", scope="get_review"))],
+)
 async def get_review(
     review_id: str,
-    uid: str = Depends(current_uid),
 ):
-    """Get a single review by ID."""
+    """Get a single review by ID.
+
+    Public: no JWT required (App Check still applies at the router level).
+    """
     return await review_service.get_review(review_id)
 
 
