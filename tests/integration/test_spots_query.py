@@ -172,3 +172,79 @@ class TestSpotsQuery:
         )
         assert r.status_code == 400
         assert r.json()["code"] == "INVALID_CURSOR"
+
+
+class TestNearbyFallback:
+    """GET /spots empty-result fallback to the predefined flagship location."""
+
+    def test_fallback_when_empty(self, client, auth_headers):
+        """No spots near the caller → returns flagship spots flagged is_fallback."""
+        from app.core.config import settings
+
+        # A spot at the configured fallback center (SF by default).
+        _seed_spot(
+            client, "flagship", "Flagship Spot", settings.FALLBACK_LAT, settings.FALLBACK_LNG
+        )
+
+        # Query a remote point with nothing nearby (Gulf of Guinea).
+        r = client.get(
+            "/spots",
+            params={"lat": 0.0, "lng": 0.0, "radius_km": 10},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["is_fallback"] is True
+        assert body["next_cursor"] is None
+        assert [s["name"] for s in body["items"]] == ["Flagship Spot"]
+
+    def test_no_fallback_when_results_exist(self, client, auth_headers):
+        """Real nearby spots are returned as-is, never flagged as fallback."""
+        _seed_spot(client, "dtla", "DTLA Spot", 34.0522, -118.2437)
+
+        r = client.get(
+            "/spots",
+            params={"lat": 34.0522, "lng": -118.2437, "radius_km": 10},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["is_fallback"] is False
+        assert len(body["items"]) == 1
+
+    def test_no_fallback_on_pagination_tail(self, client, auth_headers):
+        """An empty page reached via a cursor is end-of-results, not a fallback."""
+        from app.services.spot_service import _encode_cursor
+
+        # Flagship spot exists, but a cursor is present → paging, so no fallback.
+        _seed_spot(client, "flagship", "Flagship Spot", 34.0522, -118.2437)
+        cursor = _encode_cursor(1.0, "anything")
+
+        r = client.get(
+            "/spots",
+            params={"lat": 0.0, "lng": 0.0, "radius_km": 10, "cursor": cursor},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["is_fallback"] is False
+        assert body["items"] == []
+
+    def test_fallback_disabled(self, client, auth_headers, monkeypatch):
+        """With the kill-switch off, an empty region returns an empty list."""
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "NEARBY_FALLBACK_ENABLED", False)
+        _seed_spot(
+            client, "flagship", "Flagship Spot", settings.FALLBACK_LAT, settings.FALLBACK_LNG
+        )
+
+        r = client.get(
+            "/spots",
+            params={"lat": 0.0, "lng": 0.0, "radius_km": 10},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["is_fallback"] is False
+        assert body["items"] == []
