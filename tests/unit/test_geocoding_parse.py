@@ -102,6 +102,36 @@ class TestParseComponents:
         result = _parse_components(body)
         assert result["city"] == "Gangnam-gu"
 
+    def test_plus_code_first_result_scans_later_results(self):
+        """Remote coord: results[0] is a bare Plus Code; real address is in later
+        results. Parser must scan all results, not just the first. Regression for
+        the Channel Islands 422 (34.04952, -119.58714)."""
+        body = {
+            "results": [
+                {"address_components": [{"long_name": "85622CX7+R4", "types": ["plus_code"]}]},
+                {
+                    "address_components": [
+                        {"long_name": "Potato Harbor Road", "types": ["route"]},
+                        {"long_name": "Ventura", "types": ["locality", "political"]},
+                        {"long_name": "Santa Barbara County", "types": ["administrative_area_level_2"]},
+                        {"long_name": "California", "types": ["administrative_area_level_1"]},
+                        {"long_name": "United States", "types": ["country"]},
+                    ]
+                },
+                {
+                    "address_components": [
+                        {"long_name": "United States", "types": ["country"]},
+                    ]
+                },
+            ]
+        }
+        result = _parse_components(body)
+        assert result == {
+            "city": "Ventura",
+            "admin_area": "California",
+            "country": "United States",
+        }
+
     def test_county_fallback_for_remote_spot(self):
         """Remote spot with no locality → falls back to county (admin_area_level_2)."""
         body = _make_body(

@@ -41,17 +41,19 @@ async def reverse(lat: float, lng: float) -> dict:
 
 def _parse_components(body: dict) -> dict:
     """
-    Collect all city candidates in one pass; pick best at end.
-    Preference: locality > sublocality > postal_town > county (admin_area_level_2).
+    Collect city/admin/country candidates across ALL geocoding results.
 
-    County is the last-resort candidate so remote spots (which often lack a
-    locality) still resolve to a meaningful name like "Santa Barbara County"
-    instead of empty.
+    Google returns results ordered most-specific → least-specific. For a remote
+    coordinate with no nearby street address the first result is often a bare
+    Plus Code with no address_components, while the locality/county/state/country
+    live in later results — so we must scan every result, not just results[0].
 
-    Avoids ordering bug where sublocality appearing before locality in the
-    address_components array would incorrectly win over locality.
+    City preference: locality > sublocality > postal_town > county
+    (administrative_area_level_2). County is the last resort so remote spots
+    still resolve to a meaningful name like "Santa Barbara County" instead of
+    empty. The first (most-specific) occurrence of each type wins, which also
+    avoids the ordering bug where sublocality before locality would win.
     """
-    result = (body.get("results") or [{}])[0]
     candidates = {
         "locality": "",
         "sublocality": "",
@@ -61,15 +63,16 @@ def _parse_components(body: dict) -> dict:
     admin = ""
     country = ""
 
-    for c in result.get("address_components", []):
-        types = c.get("types", [])
-        for key in candidates:
-            if key in types:
-                candidates[key] = c["long_name"]
-        if "administrative_area_level_1" in types:
-            admin = c["long_name"]
-        if "country" in types:
-            country = c["long_name"]
+    for result in body.get("results") or []:
+        for c in result.get("address_components", []):
+            types = c.get("types", [])
+            for key in candidates:
+                if key in types and not candidates[key]:
+                    candidates[key] = c["long_name"]
+            if "administrative_area_level_1" in types and not admin:
+                admin = c["long_name"]
+            if "country" in types and not country:
+                country = c["long_name"]
 
     city = (
         candidates["locality"]
