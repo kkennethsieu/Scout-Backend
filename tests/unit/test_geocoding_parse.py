@@ -102,8 +102,43 @@ class TestParseComponents:
         result = _parse_components(body)
         assert result["city"] == "Gangnam-gu"
 
+    def test_county_fallback_for_remote_spot(self):
+        """Remote spot with no locality → falls back to county (admin_area_level_2)."""
+        body = _make_body(
+            [
+                {
+                    "long_name": "Santa Barbara County",
+                    "types": ["administrative_area_level_2", "political"],
+                },
+                {
+                    "long_name": "California",
+                    "types": ["administrative_area_level_1"],
+                },
+                {"long_name": "United States", "types": ["country"]},
+            ]
+        )
+        result = _parse_components(body)
+        assert result == {
+            "city": "Santa Barbara County",
+            "admin_area": "California",
+            "country": "United States",
+        }
+
+    def test_locality_preferred_over_county(self):
+        """Locality wins over county when both are present."""
+        body = _make_body(
+            [
+                {"long_name": "Santa Barbara County", "types": ["administrative_area_level_2"]},
+                {"long_name": "Santa Barbara", "types": ["locality"]},
+                {"long_name": "California", "types": ["administrative_area_level_1"]},
+                {"long_name": "United States", "types": ["country"]},
+            ]
+        )
+        result = _parse_components(body)
+        assert result["city"] == "Santa Barbara"
+
     def test_missing_all_city_candidates(self):
-        """No locality, sublocality, or postal_town → empty string."""
+        """No locality, sublocality, postal_town, or county → empty string."""
         body = _make_body(
             [
                 {
