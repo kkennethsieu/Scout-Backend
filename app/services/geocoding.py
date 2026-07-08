@@ -27,24 +27,37 @@ async def reverse(lat: float, lng: float) -> dict:
         if body.get("status") != "OK":
             raise GeocodingFailed(body.get("status", "unknown"))
         components = _parse_components(body)
-        # A coordinate with no resolvable city/country (ocean, remote wilderness)
-        # isn't a transient failure — reject it as non-retryable rather than
-        # persisting a spot with blank location fields.
-        if not components["city"] or not components["country"]:
+        # Only a coordinate with no resolvable country (open ocean, Null Island)
+        # is truly unusable — reject that as non-retryable. A missing *city* is
+        # common for the remote spots this app is built around (trailheads,
+        # overlooks, coastline), so fall back to the finest available area name
+        # (state, then country) rather than rejecting the submission.
+        if not components["country"]:
             raise GeocodingNoLocation()
+        if not components["city"]:
+            components["city"] = components["admin_area"] or components["country"]
         return components
 
 
 def _parse_components(body: dict) -> dict:
     """
     Collect all city candidates in one pass; pick best at end.
-    Preference: locality > sublocality > postal_town.
+    Preference: locality > sublocality > postal_town > county (admin_area_level_2).
+
+    County is the last-resort candidate so remote spots (which often lack a
+    locality) still resolve to a meaningful name like "Santa Barbara County"
+    instead of empty.
 
     Avoids ordering bug where sublocality appearing before locality in the
     address_components array would incorrectly win over locality.
     """
     result = (body.get("results") or [{}])[0]
-    candidates = {"locality": "", "sublocality": "", "postal_town": ""}
+    candidates = {
+        "locality": "",
+        "sublocality": "",
+        "postal_town": "",
+        "administrative_area_level_2": "",
+    }
     admin = ""
     country = ""
 
@@ -58,5 +71,10 @@ def _parse_components(body: dict) -> dict:
         if "country" in types:
             country = c["long_name"]
 
-    city = candidates["locality"] or candidates["sublocality"] or candidates["postal_town"]
+    city = (
+        candidates["locality"]
+        or candidates["sublocality"]
+        or candidates["postal_town"]
+        or candidates["administrative_area_level_2"]
+    )
     return {"city": city, "admin_area": admin, "country": country}
