@@ -85,6 +85,17 @@ class SpotWithReviewCreate(ReviewCreate):
     lng: float = Field(..., ge=-180, le=180)
 
 
+class ReviewUpdate(ReviewBase):
+    """JSON PATCH body for PATCH /reviews/{id}. Every field is optional.
+
+    Only fields the client actually sends are applied (model_dump(exclude_unset=True)):
+    omit a field → leave it untouched; send an explicit null / [] → clear it. Photos,
+    spot association, and identity fields aren't editable (they're not on this model).
+    """
+
+    overall_rating: Optional[int] = Field(None, ge=1, le=5)
+
+
 class ReviewResponse(ReviewBase):
     """A persisted review, including server-generated fields."""
 
@@ -106,6 +117,10 @@ class ReviewResponse(ReviewBase):
     author_photo_url: str | None = None
     photo_urls: list[str] = Field(..., min_length=1, max_length=10)
     created_at: datetime
+    # Set the first time a review is edited (PATCH /reviews/{id}); None for reviews
+    # that have never been edited. Lets the client show an "edited" marker without
+    # disturbing created_at, which stays the recency/sort key.
+    updated_at: Optional[datetime] = None
 
 
 class SubmitReviewWithNewSpotResponse(BaseModel):

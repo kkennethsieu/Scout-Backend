@@ -596,3 +596,90 @@ async def delete_review(review_id: str, uid: str) -> str | None:
 
     # Surviving spot → caller refreshes its summary; None if the spot is gone.
     return None if spot_deleted else spot_id
+
+
+async def edit_review(review_id: str, patch: dict, uid: str) -> tuple[dict, str]:
+    """
+    Edit one of the caller's own reviews (content fields only) and re-derive the
+    spot's aggregates.
+
+    `patch` holds only the fields the client actually sent (exclude_unset); an
+    empty patch is a no-op that returns the review unchanged. Photos, spot
+    association, and identity fields aren't editable.
+
+    Returns (updated_review_with_authors, spot_id) so the caller can refresh the
+    spot's AI summary. Raises ReviewNotFound (404) / Forbidden (403).
+
+    Aggregates aren't incrementally reversible (mode fields, recency-capped
+    lists), so — exactly like delete_review — we rebuild the spot from scratch by
+    replaying every review in chronological order, with the edited review's new
+    values swapped in.
+    """
+    review_ref = db.collection("reviews").document(review_id)
+    snap = review_ref.get()
+    if not snap.exists:
+        raise ReviewNotFound()
+    review = snap.to_dict()
+    if review.get("user_id") != uid:
+        raise Forbidden("You can only edit your own review")
+
+    spot_id = review["spot_id"]
+
+    # Nothing to change → return the current review as-is (no txn, no summary churn).
+    if not patch:
+        return _attach_authors([{**review, "id": review_id}])[0], spot_id
+
+    now = datetime.now(timezone.utc)
+    patch = {**patch, "updated_at": now}
+    spot_ref = db.collection("spots").document(spot_id)
+    transaction = db.transaction()
+
+    try:
+
+        @firestore.transactional
+        def _edit_in_txn(txn):
+            # --- reads first (Firestore requires all reads before writes) ---
+            spot_snap = spot_ref.get(transaction=txn)
+            reviews = [
+                (d.id, d.to_dict())
+                for d in db.collection("reviews")
+                .where("spot_id", "==", spot_id)
+                .get(transaction=txn)
+            ]
+            # Apply the edit in memory to the target review before replaying.
+            reviews = [
+                (rid, {**rdoc, **patch} if rid == review_id else rdoc)
+                for rid, rdoc in reviews
+            ]
+            reviews.sort(key=lambda kv: kv[1]["created_at"])
+
+            spot_data = spot_snap.to_dict() or {}
+            rebuilt = {
+                **{k: spot_data.get(k) for k in _SPOT_IDENTITY_FIELDS},
+                **empty_aggregates(),
+                # AI summary lives outside the aggregate machinery — carry it over
+                # so the rebuild doesn't wipe it (post-commit refresh decides staleness).
+                **{k: spot_data[k] for k in _SPOT_AI_SUMMARY_FIELDS if k in spot_data},
+            }
+            for rid, rdoc in reviews:
+                rebuilt = update_or_init_aggregates(rebuilt, rdoc, rid)
+
+            # --- writes ---
+            txn.update(review_ref, patch)
+            txn.set(spot_ref, rebuilt)
+
+        _edit_in_txn(transaction)
+    except (ReviewNotFound, Forbidden):
+        raise
+    except GoogleAPICallError as e:
+        log.error("Edit transaction failed: %s", str(e))
+        raise UpstreamUnavailable()
+    except Exception as e:
+        log.error("Edit transaction failed: %s", str(e))
+        raise InternalError()
+
+    # Spot aggregates changed — drop the cached snapshot on this instance.
+    spot_cache.invalidate()
+
+    updated = _attach_authors([{**review, **patch, "id": review_id}])[0]
+    return updated, spot_id
