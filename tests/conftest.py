@@ -105,6 +105,17 @@ def clean_state():
     except Exception:
         pass
 
+    # Reset the in-process rate limiter. Its counters persist for the whole
+    # process, and tests reuse a default uid, so without this the shared
+    # per-scope budget (e.g. submit_review 10/min) leaks across tests and later
+    # ones spuriously 429.
+    try:
+        from app.core.ratelimit import reset_for_tests
+
+        reset_for_tests()
+    except Exception:
+        pass
+
     # Clear Firestore
     try:
         requests.delete(
