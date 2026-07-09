@@ -31,6 +31,17 @@ def _enforce(item, scope: str, identity: str) -> None:
         raise RateLimited(retry_after)
 
 
+def reset_for_tests() -> None:
+    """Clear all rate-limit counters. Test-only.
+
+    The store is in-process and lives for the whole process, so its counters
+    persist across tests within a run — without a reset, the submit budget for a
+    reused test uid leaks from one test into the next. The suite calls this
+    between tests so each starts with a full budget.
+    """
+    _storage.reset()
+
+
 def _client_ip(request: Request) -> str:
     """Best-effort caller IP for keying unauthenticated limits.
 
