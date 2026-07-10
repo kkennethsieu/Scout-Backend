@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # "update available" (< latest) prompt. Env-overridable so versions bump without
     # a code change. Placeholder defaults (min == latest) gate no build until set.
     IOS_MIN_VERSION: str = "1.0"
-    IOS_LATEST_VERSION: str = "1.0.1"
+    IOS_LATEST_VERSION: str = "1.0.2"
     IOS_UPDATE_URL: str = "https://apps.apple.com/us/app/scout-photo-locations/id6781030287"
     # Firebase App Check. When False, a missing/invalid X-Firebase-AppCheck header
     # is logged but allowed through (so the API keeps working before the iOS app
