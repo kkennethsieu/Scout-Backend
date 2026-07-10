@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     TERMS_OF_SERVICE_URL: str = "https://scout-497021.web.app/terms"
     # ISO date the legal documents were last revised (shown by GET /legal).
     LEGAL_UPDATED_AT: str = "2026-06-12"
+    # iOS app version gating — surfaced via GET /config. Client compares its build
+    # against these and shows a blocking "update required" (< min) or dismissible
+    # "update available" (< latest) prompt. Env-overridable so versions bump without
+    # a code change. Placeholder defaults (min == latest) gate no build until set.
+    IOS_MIN_VERSION: str = "1.0"
+    IOS_LATEST_VERSION: str = "1.0.1"
+    IOS_UPDATE_URL: str = "https://apps.apple.com/us/app/scout-photo-locations/id6781030287"
     # Firebase App Check. When False, a missing/invalid X-Firebase-AppCheck header
     # is logged but allowed through (so the API keeps working before the iOS app
     # ships the App Check SDK). Flip to True via env once the client sends tokens.
